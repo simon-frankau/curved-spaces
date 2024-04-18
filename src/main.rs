@@ -61,13 +61,19 @@ impl Platform {
 type Program = NativeProgram;
 
 #[cfg(feature = "glutin_winit")]
+#[derive(Debug)]
+pub enum UserEvent {
+    Redraw(std::time::Duration),
+}
+
+#[cfg(feature = "glutin_winit")]
 struct Platform {
-    gl: Context,
+    gl: std::sync::Arc<Context>,
     gl_surface: glutin::surface::Surface<glutin::surface::WindowSurface>,
     gl_context: glutin::context::PossiblyCurrentContext,
     shader_version: &'static str,
     window: winit::window::Window,
-    event_loop: Option<winit::event_loop::EventLoop<()>>,
+    event_loop: Option<winit::event_loop::EventLoop<UserEvent>>,
 }
 
 #[cfg(feature = "glutin_winit")]
@@ -83,7 +89,9 @@ impl Platform {
         use raw_window_handle::HasRawWindowHandle;
         use std::num::NonZeroU32;
 
-        let event_loop = winit::event_loop::EventLoopBuilder::new().build().unwrap();
+        let event_loop = winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event()
+            .build()
+            .unwrap();
         let window_builder = winit::window::WindowBuilder::new()
             .with_title("Hello triangle!")
             .with_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0));
@@ -140,7 +148,7 @@ impl Platform {
             .unwrap();
 
         Platform {
-            gl,
+            gl: std::sync::Arc::new(gl),
             gl_surface,
             gl_context,
             shader_version: "#version 410",
@@ -151,28 +159,133 @@ impl Platform {
 
     fn run(&mut self) {
         use glutin::prelude::GlSurface;
-        use winit::event::{Event, WindowEvent};
 
         // `run` "uses up" the event_loop, so we move it out.
         let mut event_loop = None;
         std::mem::swap(&mut event_loop, &mut self.event_loop);
+        let event_loop = event_loop.expect("Event loop already run");
+        /*
+               let mut egui_glow = egui_glow::winit::EguiGlow::new(&event_loop, self.gl.clone(), None, None);
 
-        let _ = event_loop
-            .expect("Event loop already run")
-            .run(move |event, elwt| {
-                if let Event::WindowEvent { event, .. } = event {
-                    match event {
-                        WindowEvent::CloseRequested => {
-                            elwt.exit();
-                        }
-                        WindowEvent::RedrawRequested => {
-                            draw(&self.gl);
-                            self.gl_surface.swap_buffers(&self.gl_context).unwrap();
-                        }
-                        _ => (),
+               let event_loop_proxy = egui::mutex::Mutex::new(event_loop.create_proxy());
+               egui_glow
+                   .egui_ctx
+                   .set_request_repaint_callback(move |info| {
+                       event_loop_proxy
+                           .lock()
+                           .send_event(UserEvent::Redraw(info.delay))
+                           .expect("Cannot send event");
+                   });
+
+               let mut repaint_delay = std::time::Duration::MAX;
+
+               let _ = event_loop.run(
+                   move |event, event_loop_window_target| {
+                       let mut redraw = || {
+                           let mut quit = false;
+
+                           egui_glow.run(&self.window, |egui_ctx| {
+                               egui::SidePanel::left("my_side_panel").show(egui_ctx, |ui| {
+                                   ui.heading("Hello World!");
+                                   if ui.button("Quit").clicked() {
+                                       quit = true;
+                                   }
+                                   // TODO ui.color_edit_button_rgb(&mut clear_color);
+                               });
+                           });
+
+                           if quit {
+                               event_loop_window_target.exit();
+                           } else {
+                               event_loop_window_target.set_control_flow(if repaint_delay.is_zero() {
+                                   self.window.request_redraw();
+                                   winit::event_loop::ControlFlow::Poll
+                               } else if let Some(repaint_after_instant) =
+                                   std::time::Instant::now().checked_add(repaint_delay)
+                               {
+                                   winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
+                               } else {
+                                   winit::event_loop::ControlFlow::Wait
+                               });
+                           }
+
+                           {
+                               unsafe {
+                                   use glow::HasContext as _;
+                                   // self.gl.clear_color(clear_color[0], clear_color[1], clear_color[2], 1.0);
+                                   // self.gl.clear(glow::COLOR_BUFFER_BIT);
+                               }
+
+                               // draw things behind egui here
+                               draw(&self.gl);
+
+                               egui_glow.paint(&self.window);
+
+                               // draw things on top of egui here
+                               // draw(&self.gl);
+
+                   self.gl_surface.swap_buffers(&self.gl_context).unwrap();
+                               self.window.set_visible(true);
+                           }
+                       };
+
+                       match event {
+                           winit::event::Event::WindowEvent { event, .. } => {
+                               use winit::event::WindowEvent;
+                               if matches!(event, WindowEvent::CloseRequested | WindowEvent::Destroyed) {
+                                   event_loop_window_target.exit();
+                                   return;
+                               }
+
+                               if matches!(event, WindowEvent::RedrawRequested) {
+                                   redraw();
+                                   return;
+                               }
+
+                               if let winit::event::WindowEvent::Resized(physical_size) = &event {
+                                   // TODO gl_window.resize(*physical_size);
+                               }
+
+                               let event_response = egui_glow.on_window_event(&self.window, &event);
+
+                               if event_response.repaint {
+                                   self.window.request_redraw();
+                               }
+                           }
+
+                           winit::event::Event::UserEvent(UserEvent::Redraw(delay)) => {
+                               repaint_delay = delay;
+                           }
+                           winit::event::Event::LoopExiting => {
+                               egui_glow.destroy();
+                           }
+                           winit::event::Event::NewEvents(
+                               winit::event::StartCause::ResumeTimeReached { .. },
+                           ) => {
+                               self.window.request_redraw();
+                           }
+
+                           _ => (),
+                       }
+                   },
+               );
+           }
+        */
+        use winit::event::{Event, WindowEvent};
+        let _ = event_loop.run(move |event, elwt| {
+            if let Event::WindowEvent { event, .. } = event {
+                match event {
+                    WindowEvent::CloseRequested => {
+                        elwt.exit();
                     }
+                    WindowEvent::RedrawRequested => {
+                        draw(&self.gl);
+                        self.gl_surface.swap_buffers(&self.gl_context).unwrap();
+                    }
+                    _ => (),
                 }
-            });
+            }
+        });
     }
 }
 
@@ -213,7 +326,7 @@ impl Platform {
         let event_loop = sdl.event_pump().unwrap();
         Platform {
             gl,
-	    shader_version: "#version 330",
+            shader_version: "#version 330",
             window,
             event_loop,
             gl_context,
