@@ -127,6 +127,69 @@ fn main() {
             (gl, "#version 130", window, event_loop, gl_context)
         };
 
+        let program = build_program(&gl, shader_version);
+
+        gl.use_program(Some(program));
+        gl.clear_color(0.1, 0.2, 0.3, 1.0);
+
+        // We handle events differently between targets
+
+        #[cfg(feature = "glutin_winit")]
+        {
+            use glutin::prelude::GlSurface;
+            use winit::event::{Event, WindowEvent};
+            let _ = event_loop.run(move |event, elwt| {
+                if let Event::WindowEvent { event, .. } = event {
+                    match event {
+                        WindowEvent::CloseRequested => {
+                            elwt.exit();
+                        }
+                        WindowEvent::RedrawRequested => {
+                            draw(&gl);
+                            gl_surface.swap_buffers(&gl_context).unwrap();
+                        }
+                        _ => (),
+                    }
+                }
+            });
+        }
+
+        #[cfg(feature = "sdl2")]
+        {
+            let mut running = true;
+            while running {
+                {
+                    for event in events_loop.poll_iter() {
+                        match event {
+                            sdl2::event::Event::Quit { .. } => running = false,
+                            _ => {}
+                        }
+                    }
+                }
+
+                draw(&gl);
+                window.gl_swap_window();
+
+                if !running {
+                    gl.delete_program(program);
+                    gl.delete_vertex_array(vertex_array);
+                }
+            }
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            // This could be called from `requestAnimationFrame`, a winit event
+            // loop, etc.
+            draw(&gl);
+            gl.delete_program(program);
+            gl.delete_vertex_array(vertex_array);
+        }
+    }
+}
+
+fn build_program(gl: &Context, shader_version: &str) -> NativeProgram {
+    unsafe {
         let vertex_array = gl
             .create_vertex_array()
             .expect("Cannot create vertex array");
@@ -183,64 +246,13 @@ fn main() {
             gl.delete_shader(shader);
         }
 
-        gl.use_program(Some(program));
-        gl.clear_color(0.1, 0.2, 0.3, 1.0);
+        return program;
+    }
+}
 
-        // We handle events differently between targets
-
-        #[cfg(feature = "glutin_winit")]
-        {
-            use glutin::prelude::GlSurface;
-            use winit::event::{Event, WindowEvent};
-            let _ = event_loop.run(move |event, elwt| {
-                if let Event::WindowEvent { event, .. } = event {
-                    match event {
-                        WindowEvent::CloseRequested => {
-                            elwt.exit();
-                        }
-                        WindowEvent::RedrawRequested => {
-                            gl.clear(glow::COLOR_BUFFER_BIT);
-                            gl.draw_arrays(glow::TRIANGLES, 0, 3);
-                            gl_surface.swap_buffers(&gl_context).unwrap();
-                        }
-                        _ => (),
-                    }
-                }
-            });
-        }
-
-        #[cfg(feature = "sdl2")]
-        {
-            let mut running = true;
-            while running {
-                {
-                    for event in events_loop.poll_iter() {
-                        match event {
-                            sdl2::event::Event::Quit { .. } => running = false,
-                            _ => {}
-                        }
-                    }
-                }
-
-                gl.clear(glow::COLOR_BUFFER_BIT);
-                gl.draw_arrays(glow::TRIANGLES, 0, 3);
-                window.gl_swap_window();
-
-                if !running {
-                    gl.delete_program(program);
-                    gl.delete_vertex_array(vertex_array);
-                }
-            }
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            // This could be called from `requestAnimationFrame`, a winit event
-            // loop, etc.
-            gl.clear(glow::COLOR_BUFFER_BIT);
-            gl.draw_arrays(glow::TRIANGLES, 0, 3);
-            gl.delete_program(program);
-            gl.delete_vertex_array(vertex_array);
-        }
+fn draw(gl: &Context) {
+    unsafe {
+        gl.clear(glow::COLOR_BUFFER_BIT);
+        gl.draw_arrays(glow::TRIANGLES, 0, 3);
     }
 }
