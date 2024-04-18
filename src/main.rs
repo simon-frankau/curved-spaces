@@ -213,7 +213,7 @@ impl Platform {
         let event_loop = sdl.event_pump().unwrap();
         Platform {
             gl,
-            shader_version: "#version 130",
+	    shader_version: "#version 330",
             window,
             event_loop,
             gl_context,
