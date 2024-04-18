@@ -7,81 +7,121 @@
 
 use glow::*;
 
-fn main() {
-    unsafe {
-        // Create a context from a WebGL2 context on wasm32 targets
-        #[cfg(target_arch = "wasm32")]
-        let (gl, shader_version) = {
-            use wasm_bindgen::JsCast;
-            let canvas = web_sys::window()
-                .unwrap()
-                .document()
-                .unwrap()
-                .get_element_by_id("canvas")
-                .unwrap()
-                .dyn_into::<web_sys::HtmlCanvasElement>()
-                .unwrap();
-            let webgl2_context = canvas
-                .get_context("webgl2")
-                .unwrap()
-                .unwrap()
-                .dyn_into::<web_sys::WebGl2RenderingContext>()
-                .unwrap();
-            let gl = glow::Context::from_webgl2_context(webgl2_context);
-            (gl, "#version 300 es")
+////////////////////////////////////////////////////////////////////////
+// wasm32: Create a context from a WebGL2 context on wasm32 targets.
+//
+
+#[cfg(target_arch = "wasm32")]
+type Program = WebProgramKey;
+
+#[cfg(target_arch = "wasm32")]
+struct Platform {
+    gl: Context,
+    shader_version: &'static str,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Platform {
+    fn new() -> Platform {
+        use wasm_bindgen::JsCast;
+        let canvas = web_sys::window()
+            .unwrap()
+            .document()
+            .unwrap()
+            .get_element_by_id("canvas")
+            .unwrap()
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .unwrap();
+        let webgl2_context = canvas
+            .get_context("webgl2")
+            .unwrap()
+            .unwrap()
+            .dyn_into::<web_sys::WebGl2RenderingContext>()
+            .unwrap();
+        let gl = glow::Context::from_webgl2_context(webgl2_context);
+        Platform {
+            gl,
+            shader_version: "#version 300 es",
+        }
+    }
+
+    fn run(&self) {
+        // This could be called from `requestAnimationFrame`, a winit event
+        // loop, etc.
+        draw(&self.gl);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////
+// glutin_winit: Create a context from a glutin window on non-wasm32
+// targets.
+//
+
+#[cfg(feature = "glutin_winit")]
+type Program = NativeProgram;
+
+#[cfg(feature = "glutin_winit")]
+struct Platform {
+    gl: Context,
+    gl_surface: glutin::surface::Surface<glutin::surface::WindowSurface>,
+    gl_context: glutin::context::PossiblyCurrentContext,
+    shader_version: &'static str,
+    window: winit::window::Window,
+    event_loop: Option<winit::event_loop::EventLoop<()>>,
+}
+
+#[cfg(feature = "glutin_winit")]
+impl Platform {
+    fn new() -> Platform {
+        use glutin::{
+            config::{ConfigTemplateBuilder, GlConfig},
+            context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext},
+            display::{GetGlDisplay, GlDisplay},
+            surface::{GlSurface, SwapInterval},
         };
+        use glutin_winit::{DisplayBuilder, GlWindow};
+        use raw_window_handle::HasRawWindowHandle;
+        use std::num::NonZeroU32;
 
-        // Create a context from a glutin window on non-wasm32 targets
-        #[cfg(feature = "glutin_winit")]
-        let (gl, gl_surface, gl_context, shader_version, _window, event_loop) = {
-            use glutin::{
-                config::{ConfigTemplateBuilder, GlConfig},
-                context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext},
-                display::{GetGlDisplay, GlDisplay},
-                surface::{GlSurface, SwapInterval},
-            };
-            use glutin_winit::{DisplayBuilder, GlWindow};
-            use raw_window_handle::HasRawWindowHandle;
-            use std::num::NonZeroU32;
+        let event_loop = winit::event_loop::EventLoopBuilder::new().build().unwrap();
+        let window_builder = winit::window::WindowBuilder::new()
+            .with_title("Hello triangle!")
+            .with_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0));
 
-            let event_loop = winit::event_loop::EventLoopBuilder::new().build().unwrap();
-            let window_builder = winit::window::WindowBuilder::new()
-                .with_title("Hello triangle!")
-                .with_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0));
+        let template = ConfigTemplateBuilder::new();
 
-            let template = ConfigTemplateBuilder::new();
+        let display_builder = DisplayBuilder::new().with_window_builder(Some(window_builder));
 
-            let display_builder = DisplayBuilder::new().with_window_builder(Some(window_builder));
+        let (window, gl_config) = display_builder
+            .build(&event_loop, template, |configs| {
+                configs
+                    .reduce(|accum, config| {
+                        if config.num_samples() > accum.num_samples() {
+                            config
+                        } else {
+                            accum
+                        }
+                    })
+                    .unwrap()
+            })
+            .unwrap();
 
-            let (window, gl_config) = display_builder
-                .build(&event_loop, template, |configs| {
-                    configs
-                        .reduce(|accum, config| {
-                            if config.num_samples() > accum.num_samples() {
-                                config
-                            } else {
-                                accum
-                            }
-                        })
-                        .unwrap()
-                })
-                .unwrap();
+        let raw_window_handle = window.as_ref().map(|window| window.raw_window_handle());
 
-            let raw_window_handle = window.as_ref().map(|window| window.raw_window_handle());
+        let window = window.unwrap();
 
-            let gl_display = gl_config.display();
-            let context_attributes = ContextAttributesBuilder::new()
-                .with_context_api(ContextApi::OpenGl(Some(glutin::context::Version {
-                    major: 4,
-                    minor: 10,
-                })))
-                .build(raw_window_handle);
+        let gl_display = gl_config.display();
+        let context_attributes = ContextAttributesBuilder::new()
+            .with_context_api(ContextApi::OpenGl(Some(glutin::context::Version {
+                major: 4,
+                minor: 10,
+            })))
+            .build(raw_window_handle);
 
+        let (gl, gl_surface, gl_context) = unsafe {
             let not_current_gl_context = gl_display
                 .create_context(&gl_config, &context_attributes)
                 .unwrap();
-
-            let window = window.unwrap();
 
             let attrs = window.build_surface_attributes(Default::default());
             let gl_surface = gl_display
@@ -92,103 +132,135 @@ fn main() {
 
             let gl = glow::Context::from_loader_function_cstr(|s| gl_display.get_proc_address(s));
 
-            gl_surface
-                .set_swap_interval(&gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
-                .unwrap();
-
-            (
-                gl,
-                gl_surface,
-                gl_context,
-                "#version 410",
-                window,
-                event_loop,
-            )
+            (gl, gl_surface, gl_context)
         };
 
-        // Create a context from a sdl2 window
-        #[cfg(feature = "sdl2")]
-        let (gl, shader_version, window, mut events_loop, _context) = {
-            let sdl = sdl2::init().unwrap();
-            let video = sdl.video().unwrap();
-            let gl_attr = video.gl_attr();
-            gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
-            gl_attr.set_context_version(3, 0);
-            let window = video
-                .window("Hello triangle!", 1024, 769)
-                .opengl()
-                .resizable()
-                .build()
-                .unwrap();
-            let gl_context = window.gl_create_context().unwrap();
-            let gl =
-                glow::Context::from_loader_function(|s| video.gl_get_proc_address(s) as *const _);
-            let event_loop = sdl.event_pump().unwrap();
-            (gl, "#version 130", window, event_loop, gl_context)
-        };
+        gl_surface
+            .set_swap_interval(&gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
+            .unwrap();
 
-        let program = build_program(&gl, shader_version);
+        Platform {
+            gl,
+            gl_surface,
+            gl_context,
+            shader_version: "#version 410",
+            window,
+            event_loop: Some(event_loop),
+        }
+    }
 
-        gl.use_program(Some(program));
-        gl.clear_color(0.1, 0.2, 0.3, 1.0);
+    fn run(&mut self) {
+        use glutin::prelude::GlSurface;
+        use winit::event::{Event, WindowEvent};
 
-        // We handle events differently between targets
+        // `run` "uses up" the event_loop, so we move it out.
+        let mut event_loop = None;
+        std::mem::swap(&mut event_loop, &mut self.event_loop);
 
-        #[cfg(feature = "glutin_winit")]
-        {
-            use glutin::prelude::GlSurface;
-            use winit::event::{Event, WindowEvent};
-            let _ = event_loop.run(move |event, elwt| {
+        let _ = event_loop
+            .expect("Event loop already run")
+            .run(move |event, elwt| {
                 if let Event::WindowEvent { event, .. } = event {
                     match event {
                         WindowEvent::CloseRequested => {
                             elwt.exit();
                         }
                         WindowEvent::RedrawRequested => {
-                            draw(&gl);
-                            gl_surface.swap_buffers(&gl_context).unwrap();
+                            draw(&self.gl);
+                            self.gl_surface.swap_buffers(&self.gl_context).unwrap();
                         }
                         _ => (),
                     }
                 }
             });
-        }
+    }
+}
 
-        #[cfg(feature = "sdl2")]
-        {
-            let mut running = true;
-            while running {
-                {
-                    for event in events_loop.poll_iter() {
-                        match event {
-                            sdl2::event::Event::Quit { .. } => running = false,
-                            _ => {}
-                        }
+////////////////////////////////////////////////////////////////////////
+// SDL2: Create a context from an sdl2 window.
+//
+
+#[cfg(feature = "dsl2")]
+type Program = NativeProgram;
+
+#[cfg(feature = "sdl2")]
+struct Platform {
+    gl: Context,
+    shader_version: &'static str,
+    window: sdl2::video::Window,
+    event_loop: sdl2::EventPump,
+    gl_context: sdl2::video::GLContext,
+}
+
+#[cfg(feature = "sdl2")]
+impl Platform {
+    fn new() -> Platform {
+        let sdl = sdl2::init().unwrap();
+        let video = sdl.video().unwrap();
+        let gl_attr = video.gl_attr();
+        gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
+        gl_attr.set_context_version(3, 0);
+        let window = video
+            .window("Hello triangle!", 1024, 769)
+            .opengl()
+            .resizable()
+            .build()
+            .unwrap();
+        let gl_context = window.gl_create_context().unwrap();
+        let gl = unsafe {
+            glow::Context::from_loader_function(|s| video.gl_get_proc_address(s) as *const _)
+        };
+        let event_loop = sdl.event_pump().unwrap();
+        Platform {
+            gl,
+            shader_version: "#version 130",
+            window,
+            event_loop,
+            gl_context,
+        }
+    }
+
+    fn run(&mut self) {
+        let mut running = true;
+        while running {
+            {
+                for event in self.event_loop.poll_iter() {
+                    match event {
+                        sdl2::event::Event::Quit { .. } => running = false,
+                        _ => {}
                     }
                 }
-
-                draw(&gl);
-                window.gl_swap_window();
-
-                if !running {
-                    gl.delete_program(program);
-                    gl.delete_vertex_array(vertex_array);
-                }
             }
-        }
 
-        #[cfg(target_arch = "wasm32")]
-        {
-            // This could be called from `requestAnimationFrame`, a winit event
-            // loop, etc.
-            draw(&gl);
-            gl.delete_program(program);
-            gl.delete_vertex_array(vertex_array);
+            draw(&self.gl);
+            self.window.gl_swap_window();
         }
     }
 }
 
-fn build_program(gl: &Context, shader_version: &str) -> NativeProgram {
+////////////////////////////////////////////////////////////////////////
+// Main code.
+//
+
+fn main() {
+    let mut p = Platform::new();
+
+    let (program, vertex_array) = build_program(&p.gl, p.shader_version);
+
+    unsafe {
+        p.gl.use_program(Some(program));
+        p.gl.clear_color(0.1, 0.2, 0.3, 1.0);
+    }
+
+    p.run();
+
+    unsafe {
+        p.gl.delete_program(program);
+        p.gl.delete_vertex_array(vertex_array);
+    }
+}
+
+fn build_program(gl: &Context, shader_version: &str) -> (Program, VertexArray) {
     unsafe {
         let vertex_array = gl
             .create_vertex_array()
@@ -246,7 +318,7 @@ fn build_program(gl: &Context, shader_version: &str) -> NativeProgram {
             gl.delete_shader(shader);
         }
 
-        return program;
+        return (program, vertex_array);
     }
 }
 
@@ -254,5 +326,6 @@ fn draw(gl: &Context) {
     unsafe {
         gl.clear(glow::COLOR_BUFFER_BIT);
         gl.draw_arrays(glow::TRIANGLES, 0, 3);
+        // gl.draw_arrays(glow::LINE_LOOP, 0, 3);
     }
 }
