@@ -360,6 +360,9 @@ struct Drawable {
     viewport: [i32; 4],
 }
 
+const VERT_SRC: &str = include_str!("shader/vertex.glsl");
+const FRAG_SRC: &str = include_str!("shader/fragment.glsl");
+
 impl Drawable {
     fn new(gl: &Context, shader_version: &str) -> Drawable {
         unsafe {
@@ -370,28 +373,9 @@ impl Drawable {
 
             let program = gl.create_program().expect("Cannot create program");
 
-            let (vertex_shader_source, fragment_shader_source) = (
-                r#"const vec2 verts[3] = vec2[3](
-                vec2(0.5f, 1.0f),
-                vec2(0.0f, 0.0f),
-                vec2(1.0f, 0.0f)
-            );
-            out vec2 vert;
-            void main() {
-                vert = verts[gl_VertexID];
-                gl_Position = vec4(vert - 0.5, 0.0, 1.0);
-            }"#,
-                r#"precision mediump float;
-            in vec2 vert;
-            out vec4 color;
-            void main() {
-                color = vec4(vert, 0.5, 1.0);
-            }"#,
-            );
-
             let shader_sources = [
-                (glow::VERTEX_SHADER, vertex_shader_source),
-                (glow::FRAGMENT_SHADER, fragment_shader_source),
+                (glow::VERTEX_SHADER, VERT_SRC),
+                (glow::FRAGMENT_SHADER, FRAG_SRC),
             ];
 
             let mut shaders = Vec::with_capacity(shader_sources.len());
