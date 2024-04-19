@@ -157,133 +157,114 @@ impl Platform {
         }
     }
 
-    fn run(&mut self) {
+    fn run(&mut self, program: Program, vertex_array: VertexArray, viewport: &[i32; 4]) {
         use glutin::prelude::GlSurface;
 
         // `run` "uses up" the event_loop, so we move it out.
         let mut event_loop = None;
         std::mem::swap(&mut event_loop, &mut self.event_loop);
         let event_loop = event_loop.expect("Event loop already run");
-        /*
-               let mut egui_glow = egui_glow::winit::EguiGlow::new(&event_loop, self.gl.clone(), None, None);
 
-               let event_loop_proxy = egui::mutex::Mutex::new(event_loop.create_proxy());
-               egui_glow
-                   .egui_ctx
-                   .set_request_repaint_callback(move |info| {
-                       event_loop_proxy
-                           .lock()
-                           .send_event(UserEvent::Redraw(info.delay))
-                           .expect("Cannot send event");
-                   });
+        let mut egui_glow =
+            egui_glow::winit::EguiGlow::new(&event_loop, self.gl.clone(), None, None);
 
-               let mut repaint_delay = std::time::Duration::MAX;
+        let event_loop_proxy = egui::mutex::Mutex::new(event_loop.create_proxy());
+        egui_glow
+            .egui_ctx
+            .set_request_repaint_callback(move |info| {
+                event_loop_proxy
+                    .lock()
+                    .send_event(UserEvent::Redraw(info.delay))
+                    .expect("Cannot send event");
+            });
 
-               let _ = event_loop.run(
-                   move |event, event_loop_window_target| {
-                       let mut redraw = || {
-                           let mut quit = false;
+        let mut repaint_delay = std::time::Duration::MAX;
 
-                           egui_glow.run(&self.window, |egui_ctx| {
-                               egui::SidePanel::left("my_side_panel").show(egui_ctx, |ui| {
-                                   ui.heading("Hello World!");
-                                   if ui.button("Quit").clicked() {
-                                       quit = true;
-                                   }
-                                   // TODO ui.color_edit_button_rgb(&mut clear_color);
-                               });
-                           });
+        let _ = event_loop.run(move |event, event_loop_window_target| {
+            let mut redraw = || {
+                let mut quit = false;
 
-                           if quit {
-                               event_loop_window_target.exit();
-                           } else {
-                               event_loop_window_target.set_control_flow(if repaint_delay.is_zero() {
-                                   self.window.request_redraw();
-                                   winit::event_loop::ControlFlow::Poll
-                               } else if let Some(repaint_after_instant) =
-                                   std::time::Instant::now().checked_add(repaint_delay)
-                               {
-                                   winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
-                               } else {
-                                   winit::event_loop::ControlFlow::Wait
-                               });
-                           }
+                egui_glow.run(&self.window, |egui_ctx| {
+                    egui::SidePanel::left("my_side_panel").show(egui_ctx, |ui| {
+                        ui.heading("Hello World!");
+                        if ui.button("Quit").clicked() {
+                            quit = true;
+                        }
+                        // TODO ui.color_edit_button_rgb(&mut clear_color);
+                    });
+                });
 
-                           {
-                               unsafe {
-                                   use glow::HasContext as _;
-                                   // self.gl.clear_color(clear_color[0], clear_color[1], clear_color[2], 1.0);
-                                   // self.gl.clear(glow::COLOR_BUFFER_BIT);
-                               }
-
-                               // draw things behind egui here
-                               draw(&self.gl);
-
-                               egui_glow.paint(&self.window);
-
-                               // draw things on top of egui here
-                               // draw(&self.gl);
-
-                   self.gl_surface.swap_buffers(&self.gl_context).unwrap();
-                               self.window.set_visible(true);
-                           }
-                       };
-
-                       match event {
-                           winit::event::Event::WindowEvent { event, .. } => {
-                               use winit::event::WindowEvent;
-                               if matches!(event, WindowEvent::CloseRequested | WindowEvent::Destroyed) {
-                                   event_loop_window_target.exit();
-                                   return;
-                               }
-
-                               if matches!(event, WindowEvent::RedrawRequested) {
-                                   redraw();
-                                   return;
-                               }
-
-                               if let winit::event::WindowEvent::Resized(physical_size) = &event {
-                                   // TODO gl_window.resize(*physical_size);
-                               }
-
-                               let event_response = egui_glow.on_window_event(&self.window, &event);
-
-                               if event_response.repaint {
-                                   self.window.request_redraw();
-                               }
-                           }
-
-                           winit::event::Event::UserEvent(UserEvent::Redraw(delay)) => {
-                               repaint_delay = delay;
-                           }
-                           winit::event::Event::LoopExiting => {
-                               egui_glow.destroy();
-                           }
-                           winit::event::Event::NewEvents(
-                               winit::event::StartCause::ResumeTimeReached { .. },
-                           ) => {
-                               self.window.request_redraw();
-                           }
-
-                           _ => (),
-                       }
-                   },
-               );
-           }
-        */
-        use winit::event::{Event, WindowEvent};
-        let _ = event_loop.run(move |event, elwt| {
-            if let Event::WindowEvent { event, .. } = event {
-                match event {
-                    WindowEvent::CloseRequested => {
-                        elwt.exit();
-                    }
-                    WindowEvent::RedrawRequested => {
-                        draw(&self.gl);
-                        self.gl_surface.swap_buffers(&self.gl_context).unwrap();
-                    }
-                    _ => (),
+                if quit {
+                    event_loop_window_target.exit();
+                } else {
+                    event_loop_window_target.set_control_flow(if repaint_delay.is_zero() {
+                        self.window.request_redraw();
+                        winit::event_loop::ControlFlow::Poll
+                    } else if let Some(repaint_after_instant) =
+                        std::time::Instant::now().checked_add(repaint_delay)
+                    {
+                        winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
+                    } else {
+                        winit::event_loop::ControlFlow::Wait
+                    });
                 }
+
+                {
+                    unsafe {
+                        use glow::HasContext as _;
+                        // self.gl.clear_color(clear_color[0], clear_color[1], clear_color[2], 1.0);
+                        self.gl.clear(glow::COLOR_BUFFER_BIT);
+                    }
+
+                    // draw things behind egui here
+                    draw(&self.gl, program, vertex_array, viewport);
+
+                    egui_glow.paint(&self.window);
+
+                    // draw things on top of egui here
+
+                    self.gl_surface.swap_buffers(&self.gl_context).unwrap();
+                    self.window.set_visible(true);
+                }
+            };
+
+            match event {
+                winit::event::Event::WindowEvent { event, .. } => {
+                    use winit::event::WindowEvent;
+                    if matches!(event, WindowEvent::CloseRequested | WindowEvent::Destroyed) {
+                        event_loop_window_target.exit();
+                        return;
+                    }
+
+                    if matches!(event, WindowEvent::RedrawRequested) {
+                        redraw();
+                        return;
+                    }
+
+                    if let winit::event::WindowEvent::Resized(physical_size) = &event {
+                        // TODO gl_window.resize(*physical_size);
+                    }
+
+                    let event_response = egui_glow.on_window_event(&self.window, &event);
+
+                    if event_response.repaint {
+                        self.window.request_redraw();
+                    }
+                }
+
+                winit::event::Event::UserEvent(UserEvent::Redraw(delay)) => {
+                    repaint_delay = delay;
+                }
+                winit::event::Event::LoopExiting => {
+                    egui_glow.destroy();
+                }
+                winit::event::Event::NewEvents(winit::event::StartCause::ResumeTimeReached {
+                    ..
+                }) => {
+                    self.window.request_redraw();
+                }
+
+                _ => (),
             }
         });
     }
@@ -358,6 +339,11 @@ impl Platform {
 fn main() {
     let mut p = Platform::new();
 
+    let mut viewport = [0, 0, 0, 0];
+    unsafe {
+        p.gl.get_parameter_i32_slice(VIEWPORT, &mut viewport);
+    }
+
     let (program, vertex_array) = build_program(&p.gl, p.shader_version);
 
     unsafe {
@@ -365,7 +351,7 @@ fn main() {
         p.gl.clear_color(0.1, 0.2, 0.3, 1.0);
     }
 
-    p.run();
+    p.run(program, vertex_array, &viewport);
 
     unsafe {
         p.gl.delete_program(program);
@@ -435,9 +421,11 @@ fn build_program(gl: &Context, shader_version: &str) -> (Program, VertexArray) {
     }
 }
 
-fn draw(gl: &Context) {
+fn draw(gl: &Context, program: Program, vertex_array: VertexArray, viewport: &[i32; 4]) {
     unsafe {
-        gl.clear(glow::COLOR_BUFFER_BIT);
+        gl.use_program(Some(program));
+        gl.bind_vertex_array(Some(vertex_array));
+        gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
         gl.draw_arrays(glow::TRIANGLES, 0, 3);
         // gl.draw_arrays(glow::LINE_LOOP, 0, 3);
     }
