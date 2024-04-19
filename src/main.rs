@@ -242,7 +242,11 @@ impl Platform {
                     }
 
                     if let winit::event::WindowEvent::Resized(physical_size) = &event {
-                        // TODO gl_window.resize(*physical_size);
+                        self.gl_surface.resize(
+                            &self.gl_context,
+                            physical_size.width.try_into().unwrap(),
+                            physical_size.height.try_into().unwrap(),
+                        );
                     }
 
                     let event_response = egui_glow.on_window_event(&self.window, &event);
