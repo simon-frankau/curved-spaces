@@ -45,10 +45,10 @@ impl Platform {
         }
     }
 
-    fn run(&self) {
+    fn run(&self, drawable: &Drawable) {
         // This could be called from `requestAnimationFrame`, a winit event
         // loop, etc.
-        draw(&self.gl);
+        drawable.draw(&self.gl);
     }
 }
 
@@ -318,7 +318,7 @@ impl Platform {
         }
     }
 
-    fn run(&mut self) {
+    fn run(&mut self, drawable: &Drawable) {
         let mut running = true;
         while running {
             {
@@ -330,7 +330,7 @@ impl Platform {
                 }
             }
 
-            draw(&self.gl);
+            drawable.draw(&self.gl);
             self.window.gl_swap_window();
         }
     }
