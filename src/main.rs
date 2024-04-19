@@ -157,7 +157,7 @@ impl Platform {
         }
     }
 
-    fn run(&mut self, program: Program, vertex_array: VertexArray, viewport: &[i32; 4]) {
+    fn run(&mut self, drawable: &Drawable) {
         use glutin::prelude::GlSurface;
 
         // `run` "uses up" the event_loop, so we move it out.
@@ -217,7 +217,7 @@ impl Platform {
                     }
 
                     // draw things behind egui here
-                    draw(&self.gl, program, vertex_array, viewport);
+                    drawable.draw(&self.gl);
 
                     egui_glow.paint(&self.window);
 
@@ -343,37 +343,35 @@ impl Platform {
 fn main() {
     let mut p = Platform::new();
 
-    let mut viewport = [0, 0, 0, 0];
-    unsafe {
-        p.gl.get_parameter_i32_slice(VIEWPORT, &mut viewport);
-    }
-
-    let (program, vertex_array) = build_program(&p.gl, p.shader_version);
+    let drawable = Drawable::new(&p.gl, p.shader_version);
 
     unsafe {
-        p.gl.use_program(Some(program));
         p.gl.clear_color(0.1, 0.2, 0.3, 1.0);
     }
 
-    p.run(program, vertex_array, &viewport);
+    p.run(&drawable);
 
-    unsafe {
-        p.gl.delete_program(program);
-        p.gl.delete_vertex_array(vertex_array);
-    }
+    drawable.close(&p.gl);
 }
 
-fn build_program(gl: &Context, shader_version: &str) -> (Program, VertexArray) {
-    unsafe {
-        let vertex_array = gl
-            .create_vertex_array()
-            .expect("Cannot create vertex array");
-        gl.bind_vertex_array(Some(vertex_array));
+struct Drawable {
+    program: Program,
+    vertex_array: VertexArray,
+    viewport: [i32; 4],
+}
 
-        let program = gl.create_program().expect("Cannot create program");
+impl Drawable {
+    fn new(gl: &Context, shader_version: &str) -> Drawable {
+        unsafe {
+            let vertex_array = gl
+                .create_vertex_array()
+                .expect("Cannot create vertex array");
+            gl.bind_vertex_array(Some(vertex_array));
 
-        let (vertex_shader_source, fragment_shader_source) = (
-            r#"const vec2 verts[3] = vec2[3](
+            let program = gl.create_program().expect("Cannot create program");
+
+            let (vertex_shader_source, fragment_shader_source) = (
+                r#"const vec2 verts[3] = vec2[3](
                 vec2(0.5f, 1.0f),
                 vec2(0.0f, 0.0f),
                 vec2(1.0f, 0.0f)
@@ -383,54 +381,74 @@ fn build_program(gl: &Context, shader_version: &str) -> (Program, VertexArray) {
                 vert = verts[gl_VertexID];
                 gl_Position = vec4(vert - 0.5, 0.0, 1.0);
             }"#,
-            r#"precision mediump float;
+                r#"precision mediump float;
             in vec2 vert;
             out vec4 color;
             void main() {
                 color = vec4(vert, 0.5, 1.0);
             }"#,
-        );
+            );
 
-        let shader_sources = [
-            (glow::VERTEX_SHADER, vertex_shader_source),
-            (glow::FRAGMENT_SHADER, fragment_shader_source),
-        ];
+            let shader_sources = [
+                (glow::VERTEX_SHADER, vertex_shader_source),
+                (glow::FRAGMENT_SHADER, fragment_shader_source),
+            ];
 
-        let mut shaders = Vec::with_capacity(shader_sources.len());
+            let mut shaders = Vec::with_capacity(shader_sources.len());
 
-        for (shader_type, shader_source) in shader_sources.iter() {
-            let shader = gl
-                .create_shader(*shader_type)
-                .expect("Cannot create shader");
-            gl.shader_source(shader, &format!("{}\n{}", shader_version, shader_source));
-            gl.compile_shader(shader);
-            if !gl.get_shader_compile_status(shader) {
-                panic!("{}", gl.get_shader_info_log(shader));
+            for (shader_type, shader_source) in shader_sources.iter() {
+                let shader = gl
+                    .create_shader(*shader_type)
+                    .expect("Cannot create shader");
+                gl.shader_source(shader, &format!("{}\n{}", shader_version, shader_source));
+                gl.compile_shader(shader);
+                if !gl.get_shader_compile_status(shader) {
+                    panic!("{}", gl.get_shader_info_log(shader));
+                }
+                gl.attach_shader(program, shader);
+                shaders.push(shader);
             }
-            gl.attach_shader(program, shader);
-            shaders.push(shader);
-        }
 
-        gl.link_program(program);
-        if !gl.get_program_link_status(program) {
-            panic!("{}", gl.get_program_info_log(program));
-        }
+            gl.link_program(program);
+            if !gl.get_program_link_status(program) {
+                panic!("{}", gl.get_program_info_log(program));
+            }
 
-        for shader in shaders {
-            gl.detach_shader(program, shader);
-            gl.delete_shader(shader);
-        }
+            for shader in shaders {
+                gl.detach_shader(program, shader);
+                gl.delete_shader(shader);
+            }
 
-        return (program, vertex_array);
+            let mut viewport = [0, 0, 0, 0];
+            gl.get_parameter_i32_slice(VIEWPORT, &mut viewport);
+
+            Drawable {
+                program,
+                vertex_array,
+                viewport,
+            }
+        }
     }
-}
 
-fn draw(gl: &Context, program: Program, vertex_array: VertexArray, viewport: &[i32; 4]) {
-    unsafe {
-        gl.use_program(Some(program));
-        gl.bind_vertex_array(Some(vertex_array));
-        gl.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-        gl.draw_arrays(glow::TRIANGLES, 0, 3);
-        // gl.draw_arrays(glow::LINE_LOOP, 0, 3);
+    fn draw(&self, gl: &Context) {
+        unsafe {
+            gl.use_program(Some(self.program));
+            gl.bind_vertex_array(Some(self.vertex_array));
+            gl.viewport(
+                self.viewport[0],
+                self.viewport[1],
+                self.viewport[2],
+                self.viewport[3],
+            );
+            gl.draw_arrays(glow::TRIANGLES, 0, 3);
+            // gl.draw_arrays(glow::LINE_LOOP, 0, 3);
+        }
+    }
+
+    fn close(&self, gl: &Context) {
+        unsafe {
+            gl.delete_program(self.program);
+            gl.delete_vertex_array(self.vertex_array);
+        }
     }
 }
