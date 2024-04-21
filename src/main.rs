@@ -22,7 +22,7 @@ pub enum UserEvent {
 
 #[cfg(target_arch = "wasm32")]
 struct Platform {
-    gl: Context,
+    gl: std::sync::Arc<Context>,
     shader_version: &'static str,
     window: winit::window::Window,
     event_loop: Option<winit::event_loop::EventLoop<UserEvent>>,
@@ -64,18 +64,140 @@ impl Platform {
             .unwrap();
         let gl = glow::Context::from_webgl2_context(webgl2_context);
         Platform {
-            gl,
+            gl: std::sync::Arc::new(gl),
             shader_version: "#version 300 es",
             window,
             event_loop: Some(event_loop),
         }
     }
 
-    fn run(&self, drawable: &Drawable) {
-        // This could be called from `requestAnimationFrame`, a winit event
-        // loop, etc.
-        drawable.draw(&self.gl);
+    // TODO: This is simple C&P with minor modifications from the
+    // glutin_winit case. Unify them together.
+    //
+    // TODO: Currently has some scaling issues - mouse coordinates
+    // vs. GL elements don't match, seem to be off by a factor of 2 by
+    // default.
+    fn run(&mut self, drawable: &Drawable) {
+        // `run` "uses up" the event_loop, so we move it out.
+        let mut event_loop = None;
+        std::mem::swap(&mut event_loop, &mut self.event_loop);
+        let event_loop = event_loop.expect("Event loop already run");
+
+        let mut egui_glow =
+            egui_glow::winit::EguiGlow::new(&event_loop, self.gl.clone(), None, None);
+        let event_loop_proxy = egui::mutex::Mutex::new(event_loop.create_proxy());
+        egui_glow
+            .egui_ctx
+            .set_request_repaint_callback(move |info| {
+                event_loop_proxy
+                    .lock()
+                    .send_event(UserEvent::Redraw(info.delay))
+                    .expect("Cannot send event");
+            });
+
+        let mut repaint_delay = std::time::Duration::MAX;
+
+        let _ = event_loop.run(move |event, event_loop_window_target| {
+            let mut redraw = || {
+                let mut quit = false;
+
+                egui_glow.run(&self.window, |egui_ctx| {
+                    egui::SidePanel::left("my_side_panel").show(egui_ctx, |ui| {
+                        ui.heading("Hello World!");
+                        if ui.button("Quit").clicked() {
+                            quit = true;
+                        }
+                        // TODO ui.color_edit_button_rgb(&mut clear_color);
+                    });
+                });
+
+                if quit {
+                    event_loop_window_target.exit();
+                } else {
+                    event_loop_window_target.set_control_flow(if repaint_delay.is_zero() {
+                        self.window.request_redraw();
+                        winit::event_loop::ControlFlow::Poll
+                    } else if let Some(repaint_after_instant) =
+                        web_time::Instant::now().checked_add(repaint_delay)
+                    {
+                        // winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
+			winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
+                    } else {
+                        winit::event_loop::ControlFlow::Wait
+                    });
+                }
+
+                {
+                    unsafe {
+                        use glow::HasContext as _;
+                        // self.gl.clear_color(clear_color[0], clear_color[1], clear_color[2], 1.0);
+                        self.gl.clear(glow::COLOR_BUFFER_BIT);
+                    }
+
+                    // draw things behind egui here
+                    drawable.draw(&self.gl);
+
+                    egui_glow.paint(&self.window);
+
+                    // draw things on top of egui here
+
+		    // TODO: Not needed on wasm.
+                    // self.gl_surface.swap_buffers(&self.gl_context).unwrap();
+                    // self.window.set_visible(true);
+                }
+            };
+
+            match event {
+                winit::event::Event::WindowEvent { event, .. } => {
+                    use winit::event::WindowEvent;
+                    if matches!(event, WindowEvent::CloseRequested | WindowEvent::Destroyed) {
+                        event_loop_window_target.exit();
+                        return;
+                    }
+
+                    if matches!(event, WindowEvent::RedrawRequested) {
+                        redraw();
+                        return;
+                    }
+
+                    if let winit::event::WindowEvent::Resized(physical_size) = &event {
+			/* TODO: wasm equivalent?
+                        self.gl_surface.resize(
+                            &self.gl_context,
+                            physical_size.width.try_into().unwrap(),
+                            physical_size.height.try_into().unwrap(),
+                    );
+			*/
+                    }
+
+                    let event_response = egui_glow.on_window_event(&self.window, &event);
+
+                    if event_response.repaint {
+                        self.window.request_redraw();
+                    }
+                }
+
+                winit::event::Event::UserEvent(UserEvent::Redraw(delay)) => {
+                    repaint_delay = delay;
+                }
+                winit::event::Event::LoopExiting => {
+                    egui_glow.destroy();
+                }
+                winit::event::Event::NewEvents(winit::event::StartCause::ResumeTimeReached {
+                    ..
+                }) => {
+                    self.window.request_redraw();
+                }
+
+                _ => (),
+            }
+        });
     }
+
+    // TODO: This could be called from `requestAnimationFrame`, a
+    // winit event loop, etc.
+    //
+    // Look into calling this more neatly for wasm.
 }
 
 ////////////////////////////////////////////////////////////////////////

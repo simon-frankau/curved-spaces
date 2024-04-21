@@ -298,6 +298,7 @@ dependencies = [
  "sdl2",
  "wasm-bindgen",
  "web-sys",
+ "web-time",
  "winit",
 ]
 

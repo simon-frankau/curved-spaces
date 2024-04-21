@@ -30,6 +30,7 @@ winit = { version = "0.29.10", features = ["rwh_05"] }
 raw-window-handle = { version = "0.5" }
 egui = { path = "../egui/crates/egui" }
 egui_glow = { path = "../egui/crates/egui_glow", features=["winit"] }
+web-time = "*" # Match version used by winit?
 
 [features]
 glutin_winit = ["glutin", "glutin-winit", "winit", "raw-window-handle"]
