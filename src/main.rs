@@ -15,23 +15,47 @@ use glow::*;
 type Program = WebProgramKey;
 
 #[cfg(target_arch = "wasm32")]
+#[derive(Debug)]
+pub enum UserEvent {
+    Redraw(std::time::Duration),
+}
+
+#[cfg(target_arch = "wasm32")]
 struct Platform {
     gl: Context,
     shader_version: &'static str,
+    window: winit::window::Window,
+    event_loop: Option<winit::event_loop::EventLoop<UserEvent>>,
 }
 
 #[cfg(target_arch = "wasm32")]
 impl Platform {
     fn new() -> Platform {
         use wasm_bindgen::JsCast;
-        let canvas = web_sys::window()
-            .unwrap()
-            .document()
-            .unwrap()
-            .get_element_by_id("canvas")
-            .unwrap()
-            .dyn_into::<web_sys::HtmlCanvasElement>()
+
+        let event_loop = winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event()
+            .build()
             .unwrap();
+        let window = winit::window::WindowBuilder::new()
+            .with_title("Hello triangle!")
+            .with_inner_size(winit::dpi::LogicalSize::new(1024, 768))
+            .build(&event_loop)
+            .unwrap();
+
+        use ::winit::platform::web::WindowExtWebSys;
+        web_sys::window()
+            .and_then(|win| win.document())
+            .and_then(|doc| {
+                let dst = doc.get_element_by_id("wasm-canvas")?;
+                let canvas = web_sys::Element::from(window.canvas().unwrap());
+                canvas.set_attribute("width", "1024").ok()?;
+                canvas.set_attribute("height", "768").ok()?;
+                dst.append_child(&canvas).ok()?;
+                Some(())
+            })
+            .expect("Couldn't append canvas to document body.");
+
+        let canvas = window.canvas().unwrap();
         let webgl2_context = canvas
             .get_context("webgl2")
             .unwrap()
@@ -42,6 +66,8 @@ impl Platform {
         Platform {
             gl,
             shader_version: "#version 300 es",
+            window,
+            event_loop: Some(event_loop),
         }
     }
 
