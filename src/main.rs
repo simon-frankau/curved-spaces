@@ -31,31 +31,50 @@ struct Platform {
 #[cfg(target_arch = "wasm32")]
 impl Platform {
     fn new() -> Platform {
-        use wasm_bindgen::JsCast;
+	use wasm_bindgen::JsCast;
+	use winit::platform::web::WindowBuilderExtWebSys;
+	use winit::platform::web::WindowExtWebSys;
 
         let event_loop = winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event()
             .build()
             .unwrap();
-        let window = winit::window::WindowBuilder::new()
-            .with_title("Hello triangle!")
-            .with_inner_size(winit::dpi::LogicalSize::new(1024, 768))
-            .build(&event_loop)
-            .unwrap();
+        let window;
 
-        use ::winit::platform::web::WindowExtWebSys;
-        web_sys::window()
-            .and_then(|win| win.document())
-            .and_then(|doc| {
-                let dst = doc.get_element_by_id("wasm-canvas")?;
-                let canvas = web_sys::Element::from(window.canvas().unwrap());
-                canvas.set_attribute("width", "1024").ok()?;
-                canvas.set_attribute("height", "768").ok()?;
-                dst.append_child(&canvas).ok()?;
-                Some(())
-            })
-            .expect("Couldn't append canvas to document body.");
+        if cfg!(with_canvas) {
+	    // Use existing <canvas/> element.
+	    let canvas_id = "canvas";
+	    let canvas = web_sys::window()
+		.and_then(|win| win.document())
+		.and_then(|doc| doc.get_element_by_id(canvas_id))
+		.and_then(|canvas| canvas.dyn_into::<web_sys::HtmlCanvasElement>().ok())
+		.unwrap_or_else(|| panic!("Failed to find canvas with id {canvas_id:?}"));
 
-        let canvas = window.canvas().unwrap();
+            window = winit::window::WindowBuilder::new()
+                .with_inner_size(winit::dpi::LogicalSize::new(1024, 768))
+                .with_canvas(Some(canvas.clone()))
+                .build(&event_loop)
+                .unwrap();
+        } else {
+	    // Insert <canvas/> element under given element.
+            window = winit::window::WindowBuilder::new()
+                .with_inner_size(winit::dpi::LogicalSize::new(1024, 768))
+                .build(&event_loop)
+                .unwrap();
+
+            web_sys::window()
+                .and_then(|win| win.document())
+                .and_then(|doc| {
+                    let dst = doc.get_element_by_id("wasm-canvas")?;
+                    let canvas = web_sys::Element::from(window.canvas().unwrap());
+                    canvas.set_attribute("width", "1024").ok()?;
+                    canvas.set_attribute("height", "768").ok()?;
+                    dst.append_child(&canvas).ok()?;
+                    Some(())
+                })
+                .expect("Couldn't append canvas to document body.");
+        }
+
+	let canvas = window.canvas().unwrap();
         let webgl2_context = canvas
             .get_context("webgl2")
             .unwrap()
@@ -121,7 +140,7 @@ impl Platform {
                         web_time::Instant::now().checked_add(repaint_delay)
                     {
                         // winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
-			winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
+                        winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
                     } else {
                         winit::event_loop::ControlFlow::Wait
                     });
@@ -141,7 +160,7 @@ impl Platform {
 
                     // draw things on top of egui here
 
-		    // TODO: Not needed on wasm.
+                    // TODO: Not needed on wasm.
                     // self.gl_surface.swap_buffers(&self.gl_context).unwrap();
                     // self.window.set_visible(true);
                 }
@@ -161,13 +180,13 @@ impl Platform {
                     }
 
                     if let winit::event::WindowEvent::Resized(physical_size) = &event {
-			/* TODO: wasm equivalent?
-                        self.gl_surface.resize(
-                            &self.gl_context,
-                            physical_size.width.try_into().unwrap(),
-                            physical_size.height.try_into().unwrap(),
-                    );
-			*/
+                        /* TODO: wasm equivalent?
+                                    self.gl_surface.resize(
+                                        &self.gl_context,
+                                        physical_size.width.try_into().unwrap(),
+                                        physical_size.height.try_into().unwrap(),
+                                );
+                        */
                     }
 
                     let event_response = egui_glow.on_window_event(&self.window, &event);
