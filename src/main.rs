@@ -29,11 +29,26 @@ struct Platform {
 }
 
 #[cfg(target_arch = "wasm32")]
+// Taken from eframe
+pub fn native_pixels_per_point() -> f32 {
+    let pixels_per_point = web_sys::window().unwrap().device_pixel_ratio() as f32;
+    if pixels_per_point > 0.0 && pixels_per_point.is_finite() {
+        pixels_per_point
+    } else {
+        1.0
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
 impl Platform {
     fn new() -> Platform {
-	use wasm_bindgen::JsCast;
-	use winit::platform::web::WindowBuilderExtWebSys;
-	use winit::platform::web::WindowExtWebSys;
+        // TODO: Make parameters?
+        let width = 1024;
+        let height = 768;
+
+        use wasm_bindgen::JsCast;
+        use winit::platform::web::WindowBuilderExtWebSys;
+        use winit::platform::web::WindowExtWebSys;
 
         let event_loop = winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event()
             .build()
@@ -41,40 +56,52 @@ impl Platform {
         let window;
 
         if cfg!(with_canvas) {
-	    // Use existing <canvas/> element.
-	    let canvas_id = "canvas";
-	    let canvas = web_sys::window()
-		.and_then(|win| win.document())
-		.and_then(|doc| doc.get_element_by_id(canvas_id))
-		.and_then(|canvas| canvas.dyn_into::<web_sys::HtmlCanvasElement>().ok())
-		.unwrap_or_else(|| panic!("Failed to find canvas with id {canvas_id:?}"));
+            // Use existing <canvas/> element.
+            let canvas_id = "canvas";
+            let canvas = web_sys::window()
+                .and_then(|win| win.document())
+                .and_then(|doc| doc.get_element_by_id(canvas_id))
+                .and_then(|canvas| canvas.dyn_into::<web_sys::HtmlCanvasElement>().ok())
+                .unwrap_or_else(|| panic!("Failed to find canvas with id {canvas_id:?}"));
+
+            let nppp = native_pixels_per_point();
+            canvas.set_width((width as f32 * nppp) as u32);
+            canvas.set_height((height as f32 * nppp) as u32);
 
             window = winit::window::WindowBuilder::new()
-                .with_inner_size(winit::dpi::LogicalSize::new(1024, 768))
+                .with_inner_size(winit::dpi::LogicalSize::new(width, height))
                 .with_canvas(Some(canvas.clone()))
                 .build(&event_loop)
                 .unwrap();
         } else {
-	    // Insert <canvas/> element under given element.
+            // Insert <canvas/> element under given element.
             window = winit::window::WindowBuilder::new()
-                .with_inner_size(winit::dpi::LogicalSize::new(1024, 768))
+                .with_inner_size(winit::dpi::LogicalSize::new(width, height))
                 .build(&event_loop)
                 .unwrap();
 
             web_sys::window()
                 .and_then(|win| win.document())
                 .and_then(|doc| {
+                    let canvas = window.canvas().unwrap();
+                    let nppp = native_pixels_per_point();
+                    canvas.set_width((width as f32 * nppp) as u32);
+                    canvas.set_height((height as f32 * nppp) as u32);
+                    canvas
+                        .set_attribute(
+                            "style",
+                            &format!("width: {}px; height: {}px;", width, height),
+                        )
+                        .expect("Couldn't set canvas style");
+                    let canvas_elt = web_sys::Element::from(canvas);
                     let dst = doc.get_element_by_id("wasm-canvas")?;
-                    let canvas = web_sys::Element::from(window.canvas().unwrap());
-                    canvas.set_attribute("width", "1024").ok()?;
-                    canvas.set_attribute("height", "768").ok()?;
-                    dst.append_child(&canvas).ok()?;
+                    dst.append_child(&canvas_elt).ok()?;
                     Some(())
                 })
                 .expect("Couldn't append canvas to document body.");
         }
 
-	let canvas = window.canvas().unwrap();
+        let canvas = window.canvas().unwrap();
         let webgl2_context = canvas
             .get_context("webgl2")
             .unwrap()
