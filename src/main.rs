@@ -29,8 +29,7 @@ struct Platform {
 }
 
 #[cfg(any(target_arch = "wasm32", feature = "glutin_winit"))]
-impl Platform
-{
+impl Platform {
     // TODO: Still need to manage web scaling changing.
     fn run(mut self, drawable: Drawable) {
         // `run` "uses up" the event_loop, so we move it out.
@@ -174,7 +173,7 @@ impl Platform {
         // TODO: Make parameters?
         let width = 1024;
         let height = 768;
-	let dest_id = "wasm-canvas";
+        let dest_id = "wasm-canvas";
 
         use wasm_bindgen::JsCast;
         use winit::platform::web::WindowBuilderExtWebSys;
@@ -192,24 +191,21 @@ impl Platform {
             .get_element_by_id(dest_id)
             .ok_or_else(|| anyhow!("Couldn't get element '{}'", dest_id))?;
 
-	// Try casting the element into canvas:
-	let canvas_opt = dest
-	    .clone()
-            .dyn_into::<web_sys::HtmlCanvasElement>()
-            .ok();
+        // Try casting the element into canvas:
+        let canvas_opt = dest.clone().dyn_into::<web_sys::HtmlCanvasElement>().ok();
 
         let window = winit::window::WindowBuilder::new()
             .with_inner_size(winit::dpi::LogicalSize::new(width, height))
             .with_canvas(canvas_opt.clone())
             .build(&event_loop)?;
 
-	// WindowBuilder will construct a canvas if we didn't have
-	// one.
-	let canvas = window
+        // WindowBuilder will construct a canvas if we didn't have
+        // one.
+        let canvas = window
             .canvas()
             .ok_or_else(|| anyhow!("Couldn't get canvas"))?;
 
-	// Size the canvas correctly.
+        // Size the canvas correctly.
         let nppp = native_pixels_per_point();
         canvas.set_width((width as f32 * nppp) as u32);
         canvas.set_height((height as f32 * nppp) as u32);
@@ -220,12 +216,12 @@ impl Platform {
             )
             .map_err(|_| anyhow!("Couldn't set style on canvas"))?;
 
-	if canvas_opt.is_none() {
-	    // Element wasn't a canvas, a canvas has been created by
-	    // WindowBuilder, but we need to insert it into the doc.
-	    dest.append_child(&web_sys::Element::from(canvas.clone()))
+        if canvas_opt.is_none() {
+            // Element wasn't a canvas, a canvas has been created by
+            // WindowBuilder, but we need to insert it into the doc.
+            dest.append_child(&web_sys::Element::from(canvas.clone()))
                 .map_err(|_| anyhow!("Couldn't add canvas to HTML"))?;
-	}
+        }
 
         let webgl2_context = canvas
             .get_context("webgl2")
@@ -275,6 +271,11 @@ type Program = NativeProgram;
 #[cfg(feature = "glutin_winit")]
 impl Platform {
     fn new() -> Result<Platform> {
+        // TODO: Make parameters?
+        let width = 1024;
+        let height = 768;
+        let title = "Hello triangle!";
+
         use glutin::{
             config::{ConfigTemplateBuilder, GlConfig},
             context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext},
@@ -287,14 +288,12 @@ impl Platform {
 
         let event_loop =
             winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event().build()?;
+
         let window_builder = winit::window::WindowBuilder::new()
-            .with_title("Hello triangle!")
-            .with_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0));
-
+            .with_title(title)
+            .with_inner_size(winit::dpi::LogicalSize::new(width as f32, height as f32));
         let template = ConfigTemplateBuilder::new();
-
         let display_builder = DisplayBuilder::new().with_window_builder(Some(window_builder));
-
         let (window, gl_config) = display_builder
             .build(&event_loop, template, |configs| {
                 configs
@@ -324,14 +323,10 @@ impl Platform {
         let (gl, gl_surface, gl_context) = unsafe {
             let not_current_gl_context =
                 gl_display.create_context(&gl_config, &context_attributes)?;
-
             let attrs = window.build_surface_attributes(Default::default());
             let gl_surface = gl_display.create_window_surface(&gl_config, &attrs)?;
-
             let gl_context = not_current_gl_context.make_current(&gl_surface)?;
-
             let gl = glow::Context::from_loader_function_cstr(|s| gl_display.get_proc_address(s));
-
             (gl, gl_surface, gl_context)
         };
 
@@ -340,11 +335,12 @@ impl Platform {
 
         Ok(Platform {
             gl: std::sync::Arc::new(gl),
-            gl_surface,
-            gl_context,
             shader_version: "#version 410",
             window,
             event_loop: Some(event_loop),
+
+            gl_surface,
+            gl_context,
         })
     }
 
@@ -397,13 +393,18 @@ impl Platform {
     }
 
     fn new_inner() -> std::result::Result<Platform, String> {
+        // TODO: Make parameters?
+        let width = 1024;
+        let height = 768;
+        let title = "Hello triangle!";
+
         let sdl = sdl2::init()?;
         let video = sdl.video()?;
         let gl_attr = video.gl_attr();
         gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
         gl_attr.set_context_version(3, 0);
         let window = video
-            .window("Hello triangle!", 1024, 769)
+            .window(title, width, height)
             .opengl()
             .resizable()
             .build()
