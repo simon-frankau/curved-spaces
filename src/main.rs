@@ -4,8 +4,8 @@
 // Based on
 // https://github.com/grovesNL/glow/blob/main/examples/hello/src/main.rs
 //
-
-use glow::*;
+use anyhow::*;
+use glow::{Context, *};
 
 ////////////////////////////////////////////////////////////////////////
 // wasm32: Create a context from a WebGL2 context on wasm32 targets.
@@ -31,6 +31,7 @@ struct Platform {
 #[cfg(target_arch = "wasm32")]
 // Taken from eframe
 pub fn native_pixels_per_point() -> f32 {
+    // TODO: Take a Window
     let pixels_per_point = web_sys::window().unwrap().device_pixel_ratio() as f32;
     if pixels_per_point > 0.0 && pixels_per_point.is_finite() {
         pixels_per_point
@@ -41,7 +42,7 @@ pub fn native_pixels_per_point() -> f32 {
 
 #[cfg(target_arch = "wasm32")]
 impl Platform {
-    fn new() -> Platform {
+    fn new() -> Result<Platform> {
         // TODO: Make parameters?
         let width = 1024;
         let height = 768;
@@ -50,19 +51,19 @@ impl Platform {
         use winit::platform::web::WindowBuilderExtWebSys;
         use winit::platform::web::WindowExtWebSys;
 
-        let event_loop = winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event()
-            .build()
-            .unwrap();
+        let event_loop =
+            winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event().build()?;
         let window;
 
         if cfg!(with_canvas) {
             // Use existing <canvas/> element.
             let canvas_id = "canvas";
             let canvas = web_sys::window()
-                .and_then(|win| win.document())
-                .and_then(|doc| doc.get_element_by_id(canvas_id))
-                .and_then(|canvas| canvas.dyn_into::<web_sys::HtmlCanvasElement>().ok())
-                .unwrap_or_else(|| panic!("Failed to find canvas with id {canvas_id:?}"));
+                .ok_or_else(|| anyhow!("Couldn't get window"))?
+                .document()
+                .ok_or_else(|| anyhow!("Couldn't get document"))?
+                .dyn_into::<web_sys::HtmlCanvasElement>()
+                .map_err(|_| anyhow!("Couldn't cast to canvas"))?;
 
             let nppp = native_pixels_per_point();
             canvas.set_width((width as f32 * nppp) as u32);
@@ -71,50 +72,55 @@ impl Platform {
             window = winit::window::WindowBuilder::new()
                 .with_inner_size(winit::dpi::LogicalSize::new(width, height))
                 .with_canvas(Some(canvas.clone()))
-                .build(&event_loop)
-                .unwrap();
+                .build(&event_loop)?;
         } else {
             // Insert <canvas/> element under given element.
             window = winit::window::WindowBuilder::new()
                 .with_inner_size(winit::dpi::LogicalSize::new(width, height))
-                .build(&event_loop)
-                .unwrap();
+                .build(&event_loop)?;
 
-            web_sys::window()
-                .and_then(|win| win.document())
-                .and_then(|doc| {
-                    let canvas = window.canvas().unwrap();
-                    let nppp = native_pixels_per_point();
-                    canvas.set_width((width as f32 * nppp) as u32);
-                    canvas.set_height((height as f32 * nppp) as u32);
-                    canvas
-                        .set_attribute(
-                            "style",
-                            &format!("width: {}px; height: {}px;", width, height),
-                        )
-                        .expect("Couldn't set canvas style");
-                    let canvas_elt = web_sys::Element::from(canvas);
-                    let dst = doc.get_element_by_id("wasm-canvas")?;
-                    dst.append_child(&canvas_elt).ok()?;
-                    Some(())
-                })
-                .expect("Couldn't append canvas to document body.");
+            let doc = web_sys::window()
+                .ok_or_else(|| anyhow!("Couldn't get window"))?
+                .document()
+                .ok_or_else(|| anyhow!("Couldn't get document"))?;
+
+            let canvas = window
+                .canvas()
+                .ok_or_else(|| anyhow!("Couldn't get canvas"))?;
+
+            let nppp = native_pixels_per_point();
+            canvas.set_width((width as f32 * nppp) as u32);
+            canvas.set_height((height as f32 * nppp) as u32);
+            canvas
+                .set_attribute(
+                    "style",
+                    &format!("width: {}px; height: {}px;", width, height),
+                )
+                .map_err(|_| anyhow!("Couldn't set style on canvas"))?;
+            let canvas_elt = web_sys::Element::from(canvas);
+            let dst = doc
+                .get_element_by_id("wasm-canvas")
+                .ok_or_else(|| anyhow!("Couldn't get element '{}'", "wasm-canvas"))?;
+            dst.append_child(&canvas_elt)
+                .map_err(|_| anyhow!("Couldn't add canvas to HTML"))?;
         }
 
-        let canvas = window.canvas().unwrap();
+        let canvas = window
+            .canvas()
+            .ok_or_else(|| anyhow!("Couldn't get canvas"))?;
         let webgl2_context = canvas
             .get_context("webgl2")
-            .unwrap()
-            .unwrap()
+            .map_err(|_| anyhow!("Couldn't get webgl2 context"))?
+            .ok_or_else(|| anyhow!("Couldn't get webgl2 context"))?
             .dyn_into::<web_sys::WebGl2RenderingContext>()
-            .unwrap();
+            .map_err(|_| anyhow!("Couldn't cast to WebGL2RenderingContext"))?;
         let gl = glow::Context::from_webgl2_context(webgl2_context);
-        Platform {
+        Ok(Platform {
             gl: std::sync::Arc::new(gl),
             shader_version: "#version 300 es",
             window,
             event_loop: Some(event_loop),
-        }
+        })
     }
 
     // TODO: This is simple C&P with minor modifications from the
@@ -272,7 +278,7 @@ struct Platform {
 
 #[cfg(feature = "glutin_winit")]
 impl Platform {
-    fn new() -> Platform {
+    fn new() -> Result<Platform> {
         use glutin::{
             config::{ConfigTemplateBuilder, GlConfig},
             context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext},
@@ -283,9 +289,8 @@ impl Platform {
         use raw_window_handle::HasRawWindowHandle;
         use std::num::NonZeroU32;
 
-        let event_loop = winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event()
-            .build()
-            .unwrap();
+        let event_loop =
+            winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event().build()?;
         let window_builder = winit::window::WindowBuilder::new()
             .with_title("Hello triangle!")
             .with_inner_size(winit::dpi::LogicalSize::new(1024.0, 768.0));
@@ -306,11 +311,11 @@ impl Platform {
                     })
                     .unwrap()
             })
-            .unwrap();
+            .map_err(|_| anyhow!("Couldn't build display"))?;
 
         let raw_window_handle = window.as_ref().map(|window| window.raw_window_handle());
 
-        let window = window.unwrap();
+        let window = window.ok_or_else(|| anyhow!("Couldn't get window"))?;
 
         let gl_display = gl_config.display();
         let context_attributes = ContextAttributesBuilder::new()
@@ -321,16 +326,13 @@ impl Platform {
             .build(raw_window_handle);
 
         let (gl, gl_surface, gl_context) = unsafe {
-            let not_current_gl_context = gl_display
-                .create_context(&gl_config, &context_attributes)
-                .unwrap();
+            let not_current_gl_context =
+                gl_display.create_context(&gl_config, &context_attributes)?;
 
             let attrs = window.build_surface_attributes(Default::default());
-            let gl_surface = gl_display
-                .create_window_surface(&gl_config, &attrs)
-                .unwrap();
+            let gl_surface = gl_display.create_window_surface(&gl_config, &attrs)?;
 
-            let gl_context = not_current_gl_context.make_current(&gl_surface).unwrap();
+            let gl_context = not_current_gl_context.make_current(&gl_surface)?;
 
             let gl = glow::Context::from_loader_function_cstr(|s| gl_display.get_proc_address(s));
 
@@ -338,17 +340,16 @@ impl Platform {
         };
 
         gl_surface
-            .set_swap_interval(&gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))
-            .unwrap();
+            .set_swap_interval(&gl_context, SwapInterval::Wait(NonZeroU32::new(1).unwrap()))?;
 
-        Platform {
+        Ok(Platform {
             gl: std::sync::Arc::new(gl),
             gl_surface,
             gl_context,
             shader_version: "#version 410",
             window,
             event_loop: Some(event_loop),
-        }
+        })
     }
 
     fn run(&mut self, drawable: &Drawable) {
@@ -486,9 +487,13 @@ struct Platform {
 
 #[cfg(feature = "sdl2")]
 impl Platform {
-    fn new() -> Platform {
-        let sdl = sdl2::init().unwrap();
-        let video = sdl.video().unwrap();
+    fn new() -> Result<Platform> {
+        Self::new_inner().map_err(|s| anyhow!("{}", s))
+    }
+
+    fn new_inner() -> std::result::Result<Platform, String> {
+        let sdl = sdl2::init()?;
+        let video = sdl.video()?;
         let gl_attr = video.gl_attr();
         gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
         gl_attr.set_context_version(3, 0);
@@ -497,19 +502,19 @@ impl Platform {
             .opengl()
             .resizable()
             .build()
-            .unwrap();
-        let gl_context = window.gl_create_context().unwrap();
+            .map_err(|e| e.to_string())?;
+        let gl_context = window.gl_create_context()?;
         let gl = unsafe {
             glow::Context::from_loader_function(|s| video.gl_get_proc_address(s) as *const _)
         };
-        let event_loop = sdl.event_pump().unwrap();
-        Platform {
+        let event_loop = sdl.event_pump()?;
+        std::result::Result::Ok(Platform {
             gl,
             shader_version: "#version 330",
             window,
             event_loop,
             gl_context,
-        }
+        })
     }
 
     fn run(&mut self, drawable: &Drawable) {
@@ -534,8 +539,8 @@ impl Platform {
 // Main code.
 //
 
-fn main() {
-    let mut p = Platform::new();
+fn main() -> Result<()> {
+    let mut p = Platform::new()?;
 
     let drawable = Drawable::new(&p.gl, p.shader_version);
 
@@ -546,6 +551,8 @@ fn main() {
     p.run(&drawable);
 
     drawable.close(&p.gl);
+
+    Ok(())
 }
 
 struct Drawable {
