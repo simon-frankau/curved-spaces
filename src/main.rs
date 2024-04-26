@@ -123,15 +123,40 @@ impl Platform {
         })
     }
 
-    // TODO: This is simple C&P with minor modifications from the
-    // glutin_winit case. Unify them together.
-    //
-    // TODO: Currently has some scaling issues - mouse coordinates
-    // vs. GL elements don't match, seem to be off by a factor of 2 by
-    // default.
-    fn run(mut self, drawable: Drawable) {
-        use winit::platform::web::EventLoopExtWebSys;
+    fn swap_buffers(&self) {
+        // Not needed on wasm, as automatically
+        // switches when the function returns.
+        // TODO
+        // self.gl_surface.swap_buffers(&self.gl_context).unwrap();
+        // self.window.set_visible(true);
+    }
 
+    fn resize(&self, physical_size: &winit::dpi::PhysicalSize<u32>) {
+        // TODO: wasm equivalent?
+        /*
+                self.gl_surface.resize(
+                    &self.gl_context,
+                    physical_size.width.try_into().unwrap(),
+                    physical_size.height.try_into().unwrap(),
+                );
+        }
+        */
+    }
+
+    fn run_event_loop(
+        event_loop: winit::event_loop::EventLoop<UserEvent>,
+        event_fn: impl FnMut(
+                winit::event::Event<UserEvent>,
+                &winit::event_loop::EventLoopWindowTarget<UserEvent>,
+            ) + 'static,
+    ) {
+        // TODO event_loop.run(event_fn);
+        use winit::platform::web::EventLoopExtWebSys;
+        event_loop.spawn(event_fn);
+    }
+
+    // TODO: Still need to manage web scaling changing.
+    fn run(mut self, drawable: Drawable) {
         // `run` "uses up" the event_loop, so we move it out.
         let mut event_loop = None;
         std::mem::swap(&mut event_loop, &mut self.event_loop);
@@ -139,6 +164,7 @@ impl Platform {
 
         let mut egui_glow =
             egui_glow::winit::EguiGlow::new(&event_loop, self.gl.clone(), None, None);
+
         let event_loop_proxy = egui::mutex::Mutex::new(event_loop.create_proxy());
         egui_glow
             .egui_ctx
@@ -152,7 +178,10 @@ impl Platform {
         let mut repaint_delay = std::time::Duration::MAX;
 
         let event_fn =
-            move |event, event_loop_window_target: &winit::event_loop::EventLoopWindowTarget<UserEvent>| {
+            move |event,
+                  event_loop_window_target: &winit::event_loop::EventLoopWindowTarget<
+                UserEvent,
+            >| {
                 let mut redraw = || {
                     let mut quit = false;
 
@@ -175,7 +204,6 @@ impl Platform {
                         } else if let Some(repaint_after_instant) =
                             web_time::Instant::now().checked_add(repaint_delay)
                         {
-                            // winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
                             winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
                         } else {
                             winit::event_loop::ControlFlow::Wait
@@ -196,9 +224,7 @@ impl Platform {
 
                         // draw things on top of egui here
 
-                        // TODO: Not needed on wasm.
-                        // self.gl_surface.swap_buffers(&self.gl_context).unwrap();
-                        // self.window.set_visible(true);
+                        self.swap_buffers();
                     }
                 };
 
@@ -216,13 +242,7 @@ impl Platform {
                         }
 
                         if let winit::event::WindowEvent::Resized(physical_size) = &event {
-                            /* TODO: wasm equivalent?
-                                        self.gl_surface.resize(
-                                            &self.gl_context,
-                                            physical_size.width.try_into().unwrap(),
-                                            physical_size.height.try_into().unwrap(),
-                                    );
-                            */
+                            self.resize(physical_size);
                         }
 
                         let event_response = egui_glow.on_window_event(&self.window, &event);
@@ -249,7 +269,7 @@ impl Platform {
                 }
             };
 
-        event_loop.spawn(event_fn);
+        Self::run_event_loop(event_loop, event_fn);
     }
 }
 
@@ -353,9 +373,33 @@ impl Platform {
         })
     }
 
-    fn run(&mut self, drawable: Drawable) {
+    fn swap_buffers(&self) {
         use glutin::prelude::GlSurface;
+        self.gl_surface.swap_buffers(&self.gl_context).unwrap();
+        self.window.set_visible(true);
+    }
 
+    fn resize(&self, physical_size: &winit::dpi::PhysicalSize<u32>) {
+        use glutin::prelude::GlSurface;
+        self.gl_surface.resize(
+            &self.gl_context,
+            physical_size.width.try_into().unwrap(),
+            physical_size.height.try_into().unwrap(),
+        );
+    }
+
+    fn run_event_loop(
+        event_loop: winit::event_loop::EventLoop<UserEvent>,
+        event_fn: impl FnMut(
+                winit::event::Event<UserEvent>,
+                &winit::event_loop::EventLoopWindowTarget<UserEvent>,
+            ) + 'static,
+    ) {
+        let _ = event_loop.run(event_fn);
+    }
+
+    // TODO: Still need to manage web scaling changing.
+    fn run(mut self, drawable: Drawable) {
         // `run` "uses up" the event_loop, so we move it out.
         let mut event_loop = None;
         std::mem::swap(&mut event_loop, &mut self.event_loop);
@@ -376,98 +420,99 @@ impl Platform {
 
         let mut repaint_delay = std::time::Duration::MAX;
 
-        let _ = event_loop.run(move |event, event_loop_window_target| {
-            let mut redraw = || {
-                let mut quit = false;
+        let event_fn =
+            move |event,
+                  event_loop_window_target: &winit::event_loop::EventLoopWindowTarget<
+                UserEvent,
+            >| {
+                let mut redraw = || {
+                    let mut quit = false;
 
-                egui_glow.run(&self.window, |egui_ctx| {
-                    egui::SidePanel::left("my_side_panel").show(egui_ctx, |ui| {
-                        ui.heading("Hello World!");
-                        if ui.button("Quit").clicked() {
-                            quit = true;
-                        }
-                        // TODO ui.color_edit_button_rgb(&mut clear_color);
+                    egui_glow.run(&self.window, |egui_ctx| {
+                        egui::SidePanel::left("my_side_panel").show(egui_ctx, |ui| {
+                            ui.heading("Hello World!");
+                            if ui.button("Quit").clicked() {
+                                quit = true;
+                            }
+                            // TODO ui.color_edit_button_rgb(&mut clear_color);
+                        });
                     });
-                });
 
-                if quit {
-                    event_loop_window_target.exit();
-                } else {
-                    event_loop_window_target.set_control_flow(if repaint_delay.is_zero() {
-                        self.window.request_redraw();
-                        winit::event_loop::ControlFlow::Poll
-                    } else if let Some(repaint_after_instant) =
-                        std::time::Instant::now().checked_add(repaint_delay)
-                    {
-                        winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
+                    if quit {
+                        event_loop_window_target.exit();
                     } else {
-                        winit::event_loop::ControlFlow::Wait
-                    });
-                }
-
-                {
-                    unsafe {
-                        use glow::HasContext as _;
-                        // self.gl.clear_color(clear_color[0], clear_color[1], clear_color[2], 1.0);
-                        self.gl.clear(glow::COLOR_BUFFER_BIT);
+                        event_loop_window_target.set_control_flow(if repaint_delay.is_zero() {
+                            self.window.request_redraw();
+                            winit::event_loop::ControlFlow::Poll
+                        } else if let Some(repaint_after_instant) =
+                            web_time::Instant::now().checked_add(repaint_delay)
+                        {
+                            winit::event_loop::ControlFlow::WaitUntil(repaint_after_instant)
+                        } else {
+                            winit::event_loop::ControlFlow::Wait
+                        });
                     }
 
-                    // draw things behind egui here
-                    drawable.draw(&self.gl);
+                    {
+                        unsafe {
+                            use glow::HasContext as _;
+                            // self.gl.clear_color(clear_color[0], clear_color[1], clear_color[2], 1.0);
+                            self.gl.clear(glow::COLOR_BUFFER_BIT);
+                        }
 
-                    egui_glow.paint(&self.window);
+                        // draw things behind egui here
+                        drawable.draw(&self.gl);
 
-                    // draw things on top of egui here
+                        egui_glow.paint(&self.window);
 
-                    self.gl_surface.swap_buffers(&self.gl_context).unwrap();
-                    self.window.set_visible(true);
+                        // draw things on top of egui here
+
+                        self.swap_buffers();
+                    }
+                };
+
+                match event {
+                    winit::event::Event::WindowEvent { event, .. } => {
+                        use winit::event::WindowEvent;
+                        if matches!(event, WindowEvent::CloseRequested | WindowEvent::Destroyed) {
+                            event_loop_window_target.exit();
+                            return;
+                        }
+
+                        if matches!(event, WindowEvent::RedrawRequested) {
+                            redraw();
+                            return;
+                        }
+
+                        if let winit::event::WindowEvent::Resized(physical_size) = &event {
+                            self.resize(physical_size);
+                        }
+
+                        let event_response = egui_glow.on_window_event(&self.window, &event);
+
+                        if event_response.repaint {
+                            self.window.request_redraw();
+                        }
+                    }
+
+                    winit::event::Event::UserEvent(UserEvent::Redraw(delay)) => {
+                        repaint_delay = delay;
+                    }
+                    winit::event::Event::LoopExiting => {
+                        egui_glow.destroy();
+                        drawable.close(&self.gl);
+                    }
+                    winit::event::Event::NewEvents(
+                        winit::event::StartCause::ResumeTimeReached { .. },
+                    ) => {
+                        self.window.request_redraw();
+                    }
+
+                    _ => (),
                 }
             };
 
-            match event {
-                winit::event::Event::WindowEvent { event, .. } => {
-                    use winit::event::WindowEvent;
-                    if matches!(event, WindowEvent::CloseRequested | WindowEvent::Destroyed) {
-                        event_loop_window_target.exit();
-                        return;
-                    }
-
-                    if matches!(event, WindowEvent::RedrawRequested) {
-                        redraw();
-                        return;
-                    }
-
-                    if let winit::event::WindowEvent::Resized(physical_size) = &event {
-                        self.gl_surface.resize(
-                            &self.gl_context,
-                            physical_size.width.try_into().unwrap(),
-                            physical_size.height.try_into().unwrap(),
-                        );
-                    }
-
-                    let event_response = egui_glow.on_window_event(&self.window, &event);
-
-                    if event_response.repaint {
-                        self.window.request_redraw();
-                    }
-                }
-
-                winit::event::Event::UserEvent(UserEvent::Redraw(delay)) => {
-                    repaint_delay = delay;
-                }
-                winit::event::Event::LoopExiting => {
-                    egui_glow.destroy();
-                    drawable.close(&p.gl);
-                }
-                winit::event::Event::NewEvents(winit::event::StartCause::ResumeTimeReached {
-                    ..
-                }) => {
-                    self.window.request_redraw();
-                }
-
-                _ => (),
-            }
-        });
+        Self::run_event_loop(event_loop, event_fn);
     }
 }
 
@@ -535,7 +580,7 @@ impl Platform {
             self.window.gl_swap_window();
         }
 
-        drawable.close(&p.gl);
+        drawable.close(&self.gl);
     }
 }
 
@@ -544,7 +589,7 @@ impl Platform {
 //
 
 fn main() -> Result<()> {
-    let p = Platform::new()?;
+    let mut p = Platform::new()?;
 
     let drawable = Drawable::new(&p.gl, p.shader_version);
 
