@@ -1,6 +1,7 @@
 //
 // TODO: Initial GL-displaying thing.
 //
+
 use anyhow::*;
 use glow::{Context, *};
 
@@ -26,7 +27,6 @@ struct Platform {
     #[cfg(feature = "glutin_winit")]
     gl_context: glutin::context::PossiblyCurrentContext,
 }
-
 
 #[cfg(any(target_arch = "wasm32", feature = "glutin_winit"))]
 impl Platform
@@ -174,6 +174,7 @@ impl Platform {
         // TODO: Make parameters?
         let width = 1024;
         let height = 768;
+	let dest_id = "wasm-canvas";
 
         use wasm_bindgen::JsCast;
         use winit::platform::web::WindowBuilderExtWebSys;
@@ -181,61 +182,51 @@ impl Platform {
 
         let event_loop =
             winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event().build()?;
-        let window;
 
-        if cfg!(with_canvas) {
-            // Use existing <canvas/> element.
-            let canvas_id = "canvas";
-            let canvas = web_sys::window()
-                .ok_or_else(|| anyhow!("Couldn't get window"))?
-                .document()
-                .ok_or_else(|| anyhow!("Couldn't get document"))?
-                .dyn_into::<web_sys::HtmlCanvasElement>()
-                .map_err(|_| anyhow!("Couldn't cast to canvas"))?;
+        let doc = web_sys::window()
+            .ok_or_else(|| anyhow!("Couldn't get window"))?
+            .document()
+            .ok_or_else(|| anyhow!("Couldn't get document"))?;
 
-            let nppp = native_pixels_per_point();
-            canvas.set_width((width as f32 * nppp) as u32);
-            canvas.set_height((height as f32 * nppp) as u32);
+        let dest = doc
+            .get_element_by_id(dest_id)
+            .ok_or_else(|| anyhow!("Couldn't get element '{}'", dest_id))?;
 
-            window = winit::window::WindowBuilder::new()
-                .with_inner_size(winit::dpi::LogicalSize::new(width, height))
-                .with_canvas(Some(canvas.clone()))
-                .build(&event_loop)?;
-        } else {
-            // Insert <canvas/> element under given element.
-            window = winit::window::WindowBuilder::new()
-                .with_inner_size(winit::dpi::LogicalSize::new(width, height))
-                .build(&event_loop)?;
+	// Try casting the element into canvas:
+	let canvas_opt = dest
+	    .clone()
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .ok();
 
-            let doc = web_sys::window()
-                .ok_or_else(|| anyhow!("Couldn't get window"))?
-                .document()
-                .ok_or_else(|| anyhow!("Couldn't get document"))?;
+        let window = winit::window::WindowBuilder::new()
+            .with_inner_size(winit::dpi::LogicalSize::new(width, height))
+            .with_canvas(canvas_opt.clone())
+            .build(&event_loop)?;
 
-            let canvas = window
-                .canvas()
-                .ok_or_else(|| anyhow!("Couldn't get canvas"))?;
-
-            let nppp = native_pixels_per_point();
-            canvas.set_width((width as f32 * nppp) as u32);
-            canvas.set_height((height as f32 * nppp) as u32);
-            canvas
-                .set_attribute(
-                    "style",
-                    &format!("width: {}px; height: {}px;", width, height),
-                )
-                .map_err(|_| anyhow!("Couldn't set style on canvas"))?;
-            let canvas_elt = web_sys::Element::from(canvas);
-            let dst = doc
-                .get_element_by_id("wasm-canvas")
-                .ok_or_else(|| anyhow!("Couldn't get element '{}'", "wasm-canvas"))?;
-            dst.append_child(&canvas_elt)
-                .map_err(|_| anyhow!("Couldn't add canvas to HTML"))?;
-        }
-
-        let canvas = window
+	// WindowBuilder will construct a canvas if we didn't have
+	// one.
+	let canvas = window
             .canvas()
             .ok_or_else(|| anyhow!("Couldn't get canvas"))?;
+
+	// Size the canvas correctly.
+        let nppp = native_pixels_per_point();
+        canvas.set_width((width as f32 * nppp) as u32);
+        canvas.set_height((height as f32 * nppp) as u32);
+        canvas
+            .set_attribute(
+                "style",
+                &format!("width: {}px; height: {}px;", width, height),
+            )
+            .map_err(|_| anyhow!("Couldn't set style on canvas"))?;
+
+	if canvas_opt.is_none() {
+	    // Element wasn't a canvas, a canvas has been created by
+	    // WindowBuilder, but we need to insert it into the doc.
+	    dest.append_child(&web_sys::Element::from(canvas.clone()))
+                .map_err(|_| anyhow!("Couldn't add canvas to HTML"))?;
+	}
+
         let webgl2_context = canvas
             .get_context("webgl2")
             .map_err(|_| anyhow!("Couldn't get webgl2 context"))?
@@ -243,6 +234,7 @@ impl Platform {
             .dyn_into::<web_sys::WebGl2RenderingContext>()
             .map_err(|_| anyhow!("Couldn't cast to WebGL2RenderingContext"))?;
         let gl = glow::Context::from_webgl2_context(webgl2_context);
+
         Ok(Platform {
             gl: std::sync::Arc::new(gl),
             shader_version: "#version 300 es",
