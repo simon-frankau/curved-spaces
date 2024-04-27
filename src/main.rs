@@ -374,7 +374,7 @@ impl Platform {
 // SDL2: Create a context from an sdl2 window.
 //
 
-#[cfg(feature = "dsl2")]
+#[cfg(feature = "sdl2")]
 type Program = NativeProgram;
 
 #[cfg(feature = "sdl2")]
@@ -448,6 +448,13 @@ impl Platform {
 //
 
 fn main() -> Result<()> {
+    #[cfg(not(target_arch = "wasm32"))]
+    env_logger::init();
+    #[cfg(target_arch = "wasm32")]
+    let _ = console_log::init_with_level(log::Level::Info);
+    #[cfg(target_arch = "wasm32")]
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+
     let mut p = Platform::new()?;
 
     let drawable = Drawable::new(&p.gl, p.shader_version);
