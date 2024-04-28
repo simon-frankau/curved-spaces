@@ -30,7 +30,6 @@ struct Platform {
 
 #[cfg(any(target_arch = "wasm32", feature = "glutin_winit"))]
 impl Platform {
-    // TODO: Still need to manage web scaling changing.
     fn run(mut self, drawable: Drawable) {
         // `run` "uses up" the event_loop, so we move it out.
         let mut event_loop = None;
@@ -93,7 +92,8 @@ impl Platform {
                         }
 
                         // draw things behind egui here
-                        drawable.draw(&self.gl);
+                        let size = self.window.inner_size();
+                        drawable.draw(&self.gl, size.width, size.height);
 
                         egui_glow.paint(&self.window);
 
@@ -245,7 +245,22 @@ impl Platform {
     }
 
     fn resize(&self, physical_size: &winit::dpi::PhysicalSize<u32>) {
-        // TODO: wasm equivalent?
+        // On web, when the zoom is changed, we want everything to
+        // scale in a consistent manner, so that it behaves like the
+        // rest of the web page.
+        //
+        // So, we keep the logical size the same, and change the
+        // physical size.
+        //
+        // This is different from eframe,
+        // because eframe uses the whole window, so that the logical
+        // size (points) changes but the physical size (pixels) does
+        // not. For us, we expect the canvas to be just part of the
+        // page.
+        use winit::platform::web::WindowExtWebSys;
+        let canvas = self.window.canvas().unwrap();
+        canvas.set_width(physical_size.width);
+        canvas.set_height(physical_size.height);
     }
 
     fn run_event_loop(
@@ -351,6 +366,10 @@ impl Platform {
     }
 
     fn resize(&self, physical_size: &winit::dpi::PhysicalSize<u32>) {
+        // In a native window, resizing the window changes both
+        // logical and physical size. Thus the ratio stays the same,
+        // and the egui interface stays the same size. Zoom is handled
+        // separately, and works like web zoom.
         use glutin::prelude::GlSurface;
         self.gl_surface.resize(
             &self.gl_context,
@@ -372,6 +391,8 @@ impl Platform {
 
 ////////////////////////////////////////////////////////////////////////
 // SDL2: Create a context from an sdl2 window.
+//
+// TODO: No egui integration.
 //
 
 #[cfg(feature = "sdl2")]
@@ -435,7 +456,8 @@ impl Platform {
                 }
             }
 
-            drawable.draw(&self.gl);
+            let (width, height) = self.window.size();
+            drawable.draw(&self.gl, width, height);
             self.window.gl_swap_window();
         }
 
@@ -474,7 +496,6 @@ fn main() -> Result<()> {
 struct Drawable {
     program: Program,
     vertex_array: VertexArray,
-    viewport: [i32; 4],
 }
 
 const VERT_SRC: &str = include_str!("shader/vertex.glsl");
@@ -520,27 +541,18 @@ impl Drawable {
                 gl.delete_shader(shader);
             }
 
-            let mut viewport = [0, 0, 0, 0];
-            gl.get_parameter_i32_slice(VIEWPORT, &mut viewport);
-
             Drawable {
                 program,
                 vertex_array,
-                viewport,
             }
         }
     }
 
-    fn draw(&self, gl: &Context) {
+    fn draw(&self, gl: &Context, width: u32, height: u32) {
         unsafe {
             gl.use_program(Some(self.program));
             gl.bind_vertex_array(Some(self.vertex_array));
-            gl.viewport(
-                self.viewport[0],
-                self.viewport[1],
-                self.viewport[2],
-                self.viewport[3],
-            );
+            gl.viewport(0, 0, width as i32, height as i32);
             gl.draw_arrays(glow::TRIANGLES, 0, 3);
             // gl.draw_arrays(glow::LINE_LOOP, 0, 3);
         }
