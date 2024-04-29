@@ -60,13 +60,7 @@ impl Platform {
                     let mut quit = false;
 
                     egui_glow.run(&self.window, |egui_ctx| {
-                        egui::SidePanel::left("my_side_panel").show(egui_ctx, |ui| {
-                            ui.heading("Hello World!");
-                            if ui.button("Quit").clicked() {
-                                quit = true;
-                            }
-                            // TODO ui.color_edit_button_rgb(&mut clear_color);
-                        });
+                        drawable.ui(egui_ctx);
                     });
 
                     if quit {
@@ -554,6 +548,15 @@ impl Drawable {
         }
     }
 
+    fn ui(&mut self, ctx: &egui::Context) {
+        egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
+            // TODO
+            // if ui.button("Quit").clicked() {}
+            ui.add(egui::Slider::new(&mut self.tilt, -90.0..=90.0).text("Tilt"));
+            ui.add(egui::Slider::new(&mut self.turn, -180.0..=180.0).text("Turn"));
+        });
+    }
+
     unsafe fn create_vertex_array(gl: &Context) -> (Buffer, VertexArray) {
         // This is a flat array of f32s that are to be interpreted as vec2s.
         let vertices = [0.5f32, 1.0f32, 0.0f32, 0.0f32, 1.0f32, 0.0f32];
@@ -585,9 +588,6 @@ impl Drawable {
             gl.viewport(0, 0, width as i32, height as i32);
             gl.draw_arrays(glow::TRIANGLES, 0, 3);
             // gl.draw_arrays(glow::LINE_LOOP, 0, 3);
-
-            self.tilt += 0.002;
-            self.turn += 0.01;
         }
     }
 
