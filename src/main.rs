@@ -206,9 +206,6 @@ impl Platform {
             .ok_or_else(|| anyhow!("Couldn't get canvas"))?;
 
         // Size the canvas correctly.
-        let nppp = native_pixels_per_point();
-        canvas.set_width((width as f32 * nppp) as u32);
-        canvas.set_height((height as f32 * nppp) as u32);
         canvas
             .set_attribute(
                 "style",
