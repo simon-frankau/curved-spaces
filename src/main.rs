@@ -492,7 +492,8 @@ fn main() -> Result<()> {
 
 struct Drawable {
     program: Program,
-    vertex_array: VertexArray,
+    vao: VertexArray,
+    vbo: Buffer,
 }
 
 const VERT_SRC: &str = include_str!("shader/vertex.glsl");
@@ -501,11 +502,7 @@ const FRAG_SRC: &str = include_str!("shader/fragment.glsl");
 impl Drawable {
     fn new(gl: &Context, shader_version: &str) -> Drawable {
         unsafe {
-            let vertex_array = gl
-                .create_vertex_array()
-                .expect("Cannot create vertex array");
-            gl.bind_vertex_array(Some(vertex_array));
-
+            let (vbo, vao) = Self::create_vertex_array(gl);
             let program = gl.create_program().expect("Cannot create program");
 
             let shader_sources = [
@@ -538,17 +535,36 @@ impl Drawable {
                 gl.delete_shader(shader);
             }
 
-            Drawable {
-                program,
-                vertex_array,
-            }
+            Drawable { program, vao, vbo }
         }
+    }
+
+    unsafe fn create_vertex_array(gl: &Context) -> (Buffer, VertexArray) {
+        // This is a flat array of f32s that are to be interpreted as vec2s.
+        let vertices = [0.5f32, 1.0f32, 0.0f32, 0.0f32, 1.0f32, 0.0f32];
+        let vertices_u8: &[u8] = core::slice::from_raw_parts(
+            vertices.as_ptr() as *const u8,
+            vertices.len() * core::mem::size_of::<f32>(),
+        );
+
+        // We construct a buffer and upload the data
+        let vbo = gl.create_buffer().unwrap();
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
+
+        // We now construct a vertex array to describe the format of the input buffer
+        let vao = gl.create_vertex_array().unwrap();
+        gl.bind_vertex_array(Some(vao));
+        gl.enable_vertex_attrib_array(0);
+        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0);
+
+        (vbo, vao)
     }
 
     fn draw(&self, gl: &Context, width: u32, height: u32) {
         unsafe {
             gl.use_program(Some(self.program));
-            gl.bind_vertex_array(Some(self.vertex_array));
+            gl.bind_vertex_array(Some(self.vao));
             gl.viewport(0, 0, width as i32, height as i32);
             gl.draw_arrays(glow::TRIANGLES, 0, 3);
             // gl.draw_arrays(glow::LINE_LOOP, 0, 3);
@@ -558,7 +574,8 @@ impl Drawable {
     fn close(&self, gl: &Context) {
         unsafe {
             gl.delete_program(self.program);
-            gl.delete_vertex_array(self.vertex_array);
+            gl.delete_vertex_array(self.vao);
+            gl.delete_buffer(self.vbo);
         }
     }
 }
