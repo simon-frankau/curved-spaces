@@ -30,7 +30,7 @@ struct Platform {
 
 #[cfg(any(target_arch = "wasm32", feature = "glutin_winit"))]
 impl Platform {
-    fn run(mut self, drawable: Drawable) {
+    fn run(mut self, mut drawable: Drawable) {
         // `run` "uses up" the event_loop, so we move it out.
         let mut event_loop = None;
         std::mem::swap(&mut event_loop, &mut self.event_loop);
@@ -441,7 +441,7 @@ impl Platform {
         })
     }
 
-    fn run(&mut self, drawable: Drawable) {
+    fn run(&mut self, mut drawable: Drawable) {
         let mut running = true;
         while running {
             {
@@ -494,6 +494,10 @@ struct Drawable {
     program: Program,
     vao: VertexArray,
     vbo: Buffer,
+    tilt_id: UniformLocation,
+    tilt: f32,
+    turn_id: UniformLocation,
+    turn: f32,
 }
 
 const VERT_SRC: &str = include_str!("shader/vertex.glsl");
@@ -530,12 +534,23 @@ impl Drawable {
                 panic!("{}", gl.get_program_info_log(program));
             }
 
+            let tilt_id = gl.get_uniform_location(program, "tilt").unwrap();
+            let turn_id = gl.get_uniform_location(program, "turn").unwrap();
+
             for shader in shaders {
                 gl.detach_shader(program, shader);
                 gl.delete_shader(shader);
             }
 
-            Drawable { program, vao, vbo }
+            Drawable {
+                program,
+                vao,
+                vbo,
+                tilt_id,
+                tilt: 0.0f32,
+                turn_id,
+                turn: 0.0f32,
+            }
         }
     }
 
@@ -555,19 +570,24 @@ impl Drawable {
         // We now construct a vertex array to describe the format of the input buffer
         let vao = gl.create_vertex_array().unwrap();
         gl.bind_vertex_array(Some(vao));
-        gl.enable_vertex_attrib_array(0);
+        gl.enable_vertex_attrib_array(0); // TODO: Enable this only while rendering?
         gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0);
 
         (vbo, vao)
     }
 
-    fn draw(&self, gl: &Context, width: u32, height: u32) {
+    fn draw(&mut self, gl: &Context, width: u32, height: u32) {
         unsafe {
             gl.use_program(Some(self.program));
             gl.bind_vertex_array(Some(self.vao));
+            gl.uniform_1_f32(Some(&self.tilt_id), self.tilt);
+            gl.uniform_1_f32(Some(&self.turn_id), self.turn);
             gl.viewport(0, 0, width as i32, height as i32);
             gl.draw_arrays(glow::TRIANGLES, 0, 3);
             // gl.draw_arrays(glow::LINE_LOOP, 0, 3);
+
+            self.tilt += 0.002;
+            self.turn += 0.01;
         }
     }
 
