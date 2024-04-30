@@ -14,10 +14,8 @@ void main() {
         vec4(0.0, 0.0, 0.0, 2.0)
     );
 
-    float tilt_rad = tilt * M_PI / 180.0;
-    float turn_rad = turn * M_PI / 180.0;
-
-    // TODO: Swizzle so that the rotations work nicely etc.
+    float tilt_rad = -tilt * M_PI / 180.0;
+    float turn_rad =  turn * M_PI / 180.0;
 
     mat4 rot_tilt = mat4(
         vec4(1.0,            0.0,            0.0, 0.0),
@@ -33,5 +31,5 @@ void main() {
         vec4(0.0,            0.0,            0.0, 1.0)
     );
 
-    gl_Position = (projection * rot_tilt * rot_turn * vec4(in_vert, 1));
+    gl_Position = (projection * rot_tilt * rot_turn * vec4(in_vert.xzy, 1));
 }

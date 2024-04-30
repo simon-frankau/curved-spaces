@@ -147,21 +147,6 @@ impl Platform {
 //
 
 #[cfg(target_arch = "wasm32")]
-type Program = WebProgramKey;
-
-#[cfg(target_arch = "wasm32")]
-// Taken from eframe
-pub fn native_pixels_per_point() -> f32 {
-    // TODO: Take a Window
-    let pixels_per_point = web_sys::window().unwrap().device_pixel_ratio() as f32;
-    if pixels_per_point > 0.0 && pixels_per_point.is_finite() {
-        pixels_per_point
-    } else {
-        1.0
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
 impl Platform {
     fn new() -> Result<Platform> {
         // TODO: Make parameters?
@@ -270,9 +255,6 @@ impl Platform {
 // glutin_winit: Create a context from a glutin window on non-wasm32
 // targets.
 //
-
-#[cfg(feature = "glutin_winit")]
-type Program = NativeProgram;
 
 #[cfg(feature = "glutin_winit")]
 impl Platform {
@@ -547,7 +529,7 @@ impl Drawable {
                 vbo,
                 ibo,
                 tilt_id,
-                tilt: 0.0f32,
+                tilt: 30.0f32,
                 turn_id,
                 turn: 0.0f32,
                 grid_size,
