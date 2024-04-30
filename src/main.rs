@@ -488,10 +488,12 @@ struct Drawable {
     program: Program,
     vao: VertexArray,
     vbo: Buffer,
+    ibo: Buffer,
     tilt_id: UniformLocation,
     tilt: f32,
     turn_id: UniformLocation,
     turn: f32,
+    grid_size: usize,
 }
 
 const VERT_SRC: &str = include_str!("shader/vertex.glsl");
@@ -500,7 +502,10 @@ const FRAG_SRC: &str = include_str!("shader/fragment.glsl");
 impl Drawable {
     fn new(gl: &Context, shader_version: &str) -> Drawable {
         unsafe {
-            let (vbo, vao) = Self::create_vertex_array(gl);
+            let grid_size = 10;
+
+            let (vbo, vao) = Self::create_vertex_array(gl, grid_size);
+            let ibo = Self::create_index_array(gl, grid_size);
             let program = gl.create_program().expect("Cannot create program");
 
             let shader_sources = [
@@ -540,10 +545,12 @@ impl Drawable {
                 program,
                 vao,
                 vbo,
+                ibo,
                 tilt_id,
                 tilt: 0.0f32,
                 turn_id,
                 turn: 0.0f32,
+                grid_size,
             }
         }
     }
@@ -554,12 +561,49 @@ impl Drawable {
             // if ui.button("Quit").clicked() {}
             ui.add(egui::Slider::new(&mut self.tilt, -90.0..=90.0).text("Tilt"));
             ui.add(egui::Slider::new(&mut self.turn, -180.0..=180.0).text("Turn"));
+            /*
+                if ui.add(egui::Slider::new(&mut self.grid_size, 2..=100).text("Grid size")).changed() {
+            // TODO
+            }
+            */
         });
     }
 
-    unsafe fn create_vertex_array(gl: &Context) -> (Buffer, VertexArray) {
+    fn create_grid(grid_size: usize) -> Vec<f32> {
+        let mut v = Vec::new();
+        for x in 0..=grid_size {
+            let x_coord = (x as f32 / grid_size as f32) * 2.0f32 - 1.0f32;
+            for y in 0..=grid_size {
+                let y_coord = (y as f32 / grid_size as f32) * 2.0f32 - 1.0f32;
+                v.push(x_coord);
+                v.push(y_coord);
+            }
+        }
+        v
+    }
+
+    fn create_grid_indices(grid_size: usize) -> Vec<u16> {
+        let mut v = Vec::new();
+        for x in 0..=grid_size as u16 {
+            let x_idx = x * (grid_size as u16 + 1);
+            for y in 0..grid_size as u16 {
+                v.push(x_idx + y);
+                v.push(x_idx + y + 1);
+            }
+        }
+        for x in 0..grid_size as u16 {
+            let x_idx = x * (grid_size as u16 + 1);
+            for y in 0..=grid_size as u16 {
+                v.push(x_idx + y);
+                v.push(x_idx + y + grid_size as u16 + 1);
+            }
+        }
+        v
+    }
+
+    unsafe fn create_vertex_array(gl: &Context, grid_size: usize) -> (Buffer, VertexArray) {
         // This is a flat array of f32s that are to be interpreted as vec2s.
-        let vertices = [0.5f32, 1.0f32, 0.0f32, 0.0f32, 1.0f32, 0.0f32];
+        let mut vertices = Self::create_grid(grid_size);
         let vertices_u8: &[u8] = core::slice::from_raw_parts(
             vertices.as_ptr() as *const u8,
             vertices.len() * core::mem::size_of::<f32>(),
@@ -579,15 +623,33 @@ impl Drawable {
         (vbo, vao)
     }
 
+    unsafe fn create_index_array(gl: &Context, grid_size: usize) -> Buffer {
+        // This is a flat array of f32s that are to be interpreted as vec2s.
+        let indices = Self::create_grid_indices(grid_size);
+        let indices_u8: &[u8] = core::slice::from_raw_parts(
+            indices.as_ptr() as *const u8,
+            indices.len() * core::mem::size_of::<f32>(),
+        );
+
+        // We construct a buffer and upload the data
+        let ibo = gl.create_buffer().unwrap();
+        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ibo));
+        gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
+
+        ibo
+    }
+
     fn draw(&mut self, gl: &Context, width: u32, height: u32) {
         unsafe {
             gl.use_program(Some(self.program));
             gl.bind_vertex_array(Some(self.vao));
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
             gl.uniform_1_f32(Some(&self.tilt_id), self.tilt);
             gl.uniform_1_f32(Some(&self.turn_id), self.turn);
             gl.viewport(0, 0, width as i32, height as i32);
-            gl.draw_arrays(glow::TRIANGLES, 0, 3);
-            // gl.draw_arrays(glow::LINE_LOOP, 0, 3);
+            // gl.draw_arrays(glow::TRIANGLES, 0, 3);
+            // gl.draw_arrays(glow::LINE_LOOP, 0, 100);
+            gl.draw_elements(glow::LINES, 440, glow::UNSIGNED_SHORT, 0); // TODO: Grid size.
         }
     }
 

@@ -10,8 +10,8 @@ void main() {
     const mat4 projection = mat4(
         vec4(1.0, 0.0, 0.0, 0.0),
         vec4(0.0, 1.0, 0.0, 0.0),
-        vec4(0.0, 0.0, 0.5, 0.5),
-        vec4(0.0, 0.0, 0.0, 1.0)
+        vec4(0.0, 0.0, 1.0, 1.0),
+        vec4(0.0, 0.0, 0.0, 2.0)
     );
 
     float tilt_rad = tilt * M_PI / 180.0;
@@ -31,6 +31,6 @@ void main() {
         vec4(0.0,            0.0,            0.0, 1.0)
     );
 
-    gl_Position = (projection * rot_tilt * rot_turn * vec4(in_vert - 0.5, 0, 1));
+    gl_Position = (projection * rot_tilt * rot_turn * vec4(in_vert, 0, 1));
     vert = gl_Position.xy;
 }
