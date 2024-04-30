@@ -502,7 +502,7 @@ const FRAG_SRC: &str = include_str!("shader/fragment.glsl");
 impl Drawable {
     fn new(gl: &Context, shader_version: &str) -> Drawable {
         unsafe {
-            let grid_size = 10;
+            let grid_size = 30;
 
             let (vbo, vao) = Self::create_vertex_array(gl, grid_size);
             let ibo = Self::create_index_array(gl, grid_size);
@@ -577,6 +577,7 @@ impl Drawable {
                 let y_coord = (y as f32 / grid_size as f32) * 2.0f32 - 1.0f32;
                 v.push(x_coord);
                 v.push(y_coord);
+                v.push((y_coord * 4.0 * std::f32::consts::PI).sin() * x_coord * x_coord * 0.25);
             }
         }
         v
@@ -602,7 +603,7 @@ impl Drawable {
     }
 
     unsafe fn create_vertex_array(gl: &Context, grid_size: usize) -> (Buffer, VertexArray) {
-        // This is a flat array of f32s that are to be interpreted as vec2s.
+        // This is a flat array of f32s that are to be interpreted as vec3s.
         let mut vertices = Self::create_grid(grid_size);
         let vertices_u8: &[u8] = core::slice::from_raw_parts(
             vertices.as_ptr() as *const u8,
@@ -618,7 +619,14 @@ impl Drawable {
         let vao = gl.create_vertex_array().unwrap();
         gl.bind_vertex_array(Some(vao));
         gl.enable_vertex_attrib_array(0); // TODO: Enable this only while rendering?
-        gl.vertex_attrib_pointer_f32(0, 2, glow::FLOAT, false, 8, 0);
+        gl.vertex_attrib_pointer_f32(
+            0,
+            3,
+            glow::FLOAT,
+            false,
+            core::mem::size_of::<f32>() as i32 * 3,
+            0,
+        );
 
         (vbo, vao)
     }
@@ -647,9 +655,8 @@ impl Drawable {
             gl.uniform_1_f32(Some(&self.tilt_id), self.tilt);
             gl.uniform_1_f32(Some(&self.turn_id), self.turn);
             gl.viewport(0, 0, width as i32, height as i32);
-            // gl.draw_arrays(glow::TRIANGLES, 0, 3);
-            // gl.draw_arrays(glow::LINE_LOOP, 0, 100);
-            gl.draw_elements(glow::LINES, 440, glow::UNSIGNED_SHORT, 0); // TODO: Grid size.
+            let num_elts = (self.grid_size * (self.grid_size + 1) * 2) as i32;
+            gl.draw_elements(glow::LINES, num_elts, glow::UNSIGNED_SHORT, 0);
         }
     }
 

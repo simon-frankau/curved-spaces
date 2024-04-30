@@ -3,10 +3,10 @@
 uniform float tilt;
 uniform float turn;
 
-in vec2 in_vert;
-out vec2 vert;
+in vec3 in_vert;
 
 void main() {
+    // TODO: Needs aspect ratio adjustment, and set Z to avoid clipping.
     const mat4 projection = mat4(
         vec4(1.0, 0.0, 0.0, 0.0),
         vec4(0.0, 1.0, 0.0, 0.0),
@@ -16,6 +16,8 @@ void main() {
 
     float tilt_rad = tilt * M_PI / 180.0;
     float turn_rad = turn * M_PI / 180.0;
+
+    // TODO: Swizzle so that the rotations work nicely etc.
 
     mat4 rot_tilt = mat4(
         vec4(1.0,            0.0,            0.0, 0.0),
@@ -31,6 +33,5 @@ void main() {
         vec4(0.0,            0.0,            0.0, 1.0)
     );
 
-    gl_Position = (projection * rot_tilt * rot_turn * vec4(in_vert, 0, 1));
-    vert = gl_Position.xy;
+    gl_Position = (projection * rot_tilt * rot_turn * vec4(in_vert, 1));
 }
