@@ -638,7 +638,7 @@ impl Drawable {
             gl.uniform_1_f32(Some(&self.tilt_id), self.tilt);
             gl.uniform_1_f32(Some(&self.turn_id), self.turn);
             gl.viewport(0, 0, width as i32, height as i32);
-            let num_elts = (self.grid_size * (self.grid_size + 1) * 2) as i32;
+            let num_elts = (self.grid_size * (self.grid_size + 1) * 4) as i32;
             gl.draw_elements(glow::LINES, num_elts, glow::UNSIGNED_SHORT, 0);
             gl.disable_vertex_attrib_array(0);
         }
