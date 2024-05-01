@@ -60,7 +60,7 @@ impl Platform {
                     let mut quit = false;
 
                     egui_glow.run(&self.window, |egui_ctx| {
-                        drawable.ui(egui_ctx);
+                        drawable.ui(egui_ctx, &self.gl);
                     });
 
                     if quit {
@@ -484,10 +484,8 @@ const FRAG_SRC: &str = include_str!("shader/fragment.glsl");
 impl Drawable {
     fn new(gl: &Context, shader_version: &str) -> Drawable {
         unsafe {
-            let grid_size = 30;
+            let (vbo, vao, ibo) = Self::create_gl_arrays(gl);
 
-            let (vbo, vao) = Self::create_vertex_array(gl, grid_size);
-            let ibo = Self::create_index_array(gl, grid_size);
             let program = gl.create_program().expect("Cannot create program");
 
             let shader_sources = [
@@ -523,7 +521,7 @@ impl Drawable {
                 gl.delete_shader(shader);
             }
 
-            Drawable {
+            let this = Drawable {
                 program,
                 vao,
                 vbo,
@@ -532,22 +530,27 @@ impl Drawable {
                 tilt: 30.0f32,
                 turn_id,
                 turn: 0.0f32,
-                grid_size,
-            }
+                grid_size: 30,
+            };
+            this.regrid(gl);
+            this
         }
     }
 
-    fn ui(&mut self, ctx: &egui::Context) {
+    fn ui(&mut self, ctx: &egui::Context, gl: &Context) {
         egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
             // TODO
             // if ui.button("Quit").clicked() {}
             ui.add(egui::Slider::new(&mut self.tilt, -90.0..=90.0).text("Tilt"));
             ui.add(egui::Slider::new(&mut self.turn, -180.0..=180.0).text("Turn"));
-            /*
-                if ui.add(egui::Slider::new(&mut self.grid_size, 2..=100).text("Grid size")).changed() {
-            // TODO
+            if ui
+                .add(egui::Slider::new(&mut self.grid_size, 2..=100).text("Grid size"))
+                .changed()
+            {
+                unsafe {
+                    self.regrid(gl);
+                }
             }
-            */
         });
     }
 
@@ -584,23 +587,36 @@ impl Drawable {
         v
     }
 
-    unsafe fn create_vertex_array(gl: &Context, grid_size: usize) -> (Buffer, VertexArray) {
-        // This is a flat array of f32s that are to be interpreted as vec3s.
-        let mut vertices = Self::create_grid(grid_size);
+    // Regenerate the grid used by OpenGL.
+    unsafe fn regrid(&self, gl: &Context) {
+        // Generate the vertices.
+        let vertices = Self::create_grid(self.grid_size);
         let vertices_u8: &[u8] = core::slice::from_raw_parts(
             vertices.as_ptr() as *const u8,
             vertices.len() * core::mem::size_of::<f32>(),
         );
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
+        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
 
-        // We construct a buffer and upload the data
+        // Generate the indices.
+        let indices = Self::create_grid_indices(self.grid_size);
+        let indices_u8: &[u8] = core::slice::from_raw_parts(
+            indices.as_ptr() as *const u8,
+            indices.len() * core::mem::size_of::<f32>(),
+        );
+        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
+        gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
+    }
+
+    unsafe fn create_gl_arrays(gl: &Context) -> (Buffer, VertexArray, Buffer) {
+        // We construct buffer, data will be uploaded later.
+        let ibo = gl.create_buffer().unwrap();
         let vbo = gl.create_buffer().unwrap();
         gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
 
         // We now construct a vertex array to describe the format of the input buffer
         let vao = gl.create_vertex_array().unwrap();
         gl.bind_vertex_array(Some(vao));
-        gl.enable_vertex_attrib_array(0); // TODO: Enable this only while rendering?
         gl.vertex_attrib_pointer_f32(
             0,
             3,
@@ -610,35 +626,21 @@ impl Drawable {
             0,
         );
 
-        (vbo, vao)
-    }
-
-    unsafe fn create_index_array(gl: &Context, grid_size: usize) -> Buffer {
-        // This is a flat array of f32s that are to be interpreted as vec2s.
-        let indices = Self::create_grid_indices(grid_size);
-        let indices_u8: &[u8] = core::slice::from_raw_parts(
-            indices.as_ptr() as *const u8,
-            indices.len() * core::mem::size_of::<f32>(),
-        );
-
-        // We construct a buffer and upload the data
-        let ibo = gl.create_buffer().unwrap();
-        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(ibo));
-        gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
-
-        ibo
+        (vbo, vao, ibo)
     }
 
     fn draw(&mut self, gl: &Context, width: u32, height: u32) {
         unsafe {
             gl.use_program(Some(self.program));
             gl.bind_vertex_array(Some(self.vao));
+            gl.enable_vertex_attrib_array(0);
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
             gl.uniform_1_f32(Some(&self.tilt_id), self.tilt);
             gl.uniform_1_f32(Some(&self.turn_id), self.turn);
             gl.viewport(0, 0, width as i32, height as i32);
             let num_elts = (self.grid_size * (self.grid_size + 1) * 2) as i32;
             gl.draw_elements(glow::LINES, num_elts, glow::UNSIGNED_SHORT, 0);
+            gl.disable_vertex_attrib_array(0);
         }
     }
 
