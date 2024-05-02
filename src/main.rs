@@ -546,7 +546,7 @@ impl Drawable {
     }
 
     fn ui(&mut self, ctx: &egui::Context, gl: &Context) {
-        egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
+        egui::Window::new("Controls").show(ctx, |ui| {
             // TODO
             // if ui.button("Quit").clicked() {}
             let mut needs_regrid = false;
