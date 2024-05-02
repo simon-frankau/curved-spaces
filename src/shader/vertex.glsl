@@ -6,9 +6,9 @@
 // absolute maximum radius is sqrt(3). Let's try sqrt(2) as
 // more of a compromise for what real usage is like (to avoid
 // zooming out too much).
-const float r1 = sqrt(2);
+const float r1 = sqrt(2.0);
 // Radius of sphere containing image, post-transform.
-const float r2 = sqrt(2) + 1;
+const float r2 = sqrt(2.0) + 1.0;
 // Scaling factor.
 const float s = r2 / r1;
 
