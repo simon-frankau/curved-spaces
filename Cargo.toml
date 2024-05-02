@@ -7,9 +7,9 @@ edition = "2021"
 anyhow = "*"
 glow = "0.13.1"
 raw-window-handle = { version = "0.5", optional = true }
-egui = "0.27"
-egui_glow = { version = "0.27", features=["winit"] }
-web-time = "*" # Match version used by winit?
+egui = { version = "0.27", git = "https://github.com/emilk/egui" }
+egui_glow = { version = "0.27", features=["winit"], git = "https://github.com/emilk/egui" }
+web-time = "0.2"
 log = "0.4"
 
 [target.'cfg(not(any(target_arch = "wasm32")))'.dependencies]
