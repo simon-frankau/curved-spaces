@@ -476,6 +476,7 @@ struct Drawable {
     turn_id: UniformLocation,
     turn: f32,
     grid_size: usize,
+    z_scale: f32,
 }
 
 const VERT_SRC: &str = include_str!("shader/vertex.glsl");
@@ -531,6 +532,7 @@ impl Drawable {
                 turn_id,
                 turn: 0.0f32,
                 grid_size: 30,
+                z_scale: 0.25f32,
             };
             this.regrid(gl);
             this
@@ -541,12 +543,16 @@ impl Drawable {
         egui::SidePanel::left("my_side_panel").show(ctx, |ui| {
             // TODO
             // if ui.button("Quit").clicked() {}
+            let mut needs_regrid = false;
             ui.add(egui::Slider::new(&mut self.tilt, -90.0..=90.0).text("Tilt"));
             ui.add(egui::Slider::new(&mut self.turn, -180.0..=180.0).text("Turn"));
-            if ui
+            needs_regrid |= ui
                 .add(egui::Slider::new(&mut self.grid_size, 2..=100).text("Grid size"))
-                .changed()
-            {
+                .changed();
+            needs_regrid |= ui
+                .add(egui::Slider::new(&mut self.z_scale, -1.0f32..=1.0f32).text("Z scale"))
+                .changed();
+            if needs_regrid {
                 unsafe {
                     self.regrid(gl);
                 }
@@ -554,7 +560,7 @@ impl Drawable {
         });
     }
 
-    fn create_grid(grid_size: usize) -> Vec<f32> {
+    fn create_grid(grid_size: usize, z_scale: f32) -> Vec<f32> {
         let mut v = Vec::new();
         for x in 0..=grid_size {
             let x_coord = (x as f32 / grid_size as f32) * 2.0f32 - 1.0f32;
@@ -562,7 +568,7 @@ impl Drawable {
                 let y_coord = (y as f32 / grid_size as f32) * 2.0f32 - 1.0f32;
                 v.push(x_coord);
                 v.push(y_coord);
-                v.push((y_coord * 4.0 * std::f32::consts::PI).sin() * x_coord * x_coord * 0.25);
+                v.push((y_coord * 4.0 * std::f32::consts::PI).sin() * x_coord * x_coord * z_scale);
             }
         }
         v
@@ -590,7 +596,7 @@ impl Drawable {
     // Regenerate the grid used by OpenGL.
     unsafe fn regrid(&self, gl: &Context) {
         // Generate the vertices.
-        let vertices = Self::create_grid(self.grid_size);
+        let vertices = Self::create_grid(self.grid_size, self.z_scale);
         let vertices_u8: &[u8] = core::slice::from_raw_parts(
             vertices.as_ptr() as *const u8,
             vertices.len() * core::mem::size_of::<f32>(),
