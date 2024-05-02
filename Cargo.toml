@@ -3,17 +3,12 @@ name = "curved-space"
 version = "0.1.0"
 edition = "2021"
 
-# Dependencies taken from
-# https://github.com/grovesNL/glow/blob/main/examples/hello/Cargo.toml
-
 [dependencies]
 anyhow = "*"
 glow = "0.13.1"
 raw-window-handle = { version = "0.5", optional = true }
-# egui = "0.27"
-# egui_glow = { path = "../egui/crates/egui_glow", version = "0.27", features=["winit"] }
-egui = { path = "../egui/crates/egui" }
-egui_glow = { path = "../egui/crates/egui_glow", features=["winit"] }
+egui = "0.27"
+egui_glow = { version = "0.27", features=["winit"] }
 web-time = "*" # Match version used by winit?
 log = "0.4"
 
