@@ -1,17 +1,20 @@
 #define M_PI 3.1415926535897932384626433832795
 
+uniform float x_scale;
+uniform float y_scale;
+
 uniform float tilt;
 uniform float turn;
 
 in vec3 in_vert;
 
 void main() {
-    // TODO: Needs aspect ratio adjustment, and set Z to avoid clipping.
-    const mat4 projection = mat4(
-        vec4(1.0, 0.0, 0.0, 0.0),
-        vec4(0.0, 1.0, 0.0, 0.0),
-        vec4(0.0, 0.0, 1.0, 1.0),
-        vec4(0.0, 0.0, 0.0, 2.0)
+    // TODO: Need to set Z to avoid clipping.
+    mat4 projection = mat4(
+        vec4(x_scale,     0.0, 0.0, 0.0),
+        vec4(    0.0, y_scale, 0.0, 0.0),
+        vec4(    0.0,     0.0, 1.0, 1.0),
+        vec4(    0.0,     0.0, 0.0, 2.0)
     );
 
     float tilt_rad = -tilt * M_PI / 180.0;

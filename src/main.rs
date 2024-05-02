@@ -475,6 +475,8 @@ struct Drawable {
     tilt: f32,
     turn_id: UniformLocation,
     turn: f32,
+    x_scale_id: UniformLocation,
+    y_scale_id: UniformLocation,
     grid_size: usize,
     z_scale: f32,
 }
@@ -516,6 +518,8 @@ impl Drawable {
 
             let tilt_id = gl.get_uniform_location(program, "tilt").unwrap();
             let turn_id = gl.get_uniform_location(program, "turn").unwrap();
+            let x_scale_id = gl.get_uniform_location(program, "x_scale").unwrap();
+            let y_scale_id = gl.get_uniform_location(program, "y_scale").unwrap();
 
             for shader in shaders {
                 gl.detach_shader(program, shader);
@@ -531,6 +535,8 @@ impl Drawable {
                 tilt: 30.0f32,
                 turn_id,
                 turn: 0.0f32,
+                x_scale_id,
+                y_scale_id,
                 grid_size: 30,
                 z_scale: 0.25f32,
             };
@@ -643,6 +649,14 @@ impl Drawable {
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
             gl.uniform_1_f32(Some(&self.tilt_id), self.tilt);
             gl.uniform_1_f32(Some(&self.turn_id), self.turn);
+            gl.uniform_1_f32(
+                Some(&self.x_scale_id),
+                (height as f32 / width as f32).min(1.0f32),
+            );
+            gl.uniform_1_f32(
+                Some(&self.y_scale_id),
+                (width as f32 / height as f32).min(1.0f32),
+            );
             gl.viewport(0, 0, width as i32, height as i32);
             let num_elts = (self.grid_size * (self.grid_size + 1) * 4) as i32;
             gl.draw_elements(glow::LINES, num_elts, glow::UNSIGNED_SHORT, 0);
