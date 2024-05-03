@@ -466,17 +466,71 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-struct Drawable {
-    program: Program,
+struct Shape {
     vao: VertexArray,
     vbo: Buffer,
     ibo: Buffer,
+    num_elts: i32,
+}
+
+impl Shape {
+    // Create vertex and index buffers, and vertex array to describe vertex buffer.
+    unsafe fn new(gl: &Context) -> Shape {
+        // We construct buffer, data will be uploaded later.
+        let ibo = gl.create_buffer().unwrap();
+        let vbo = gl.create_buffer().unwrap();
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+
+        // We now construct a vertex array to describe the format of the input buffer
+        let vao = gl.create_vertex_array().unwrap();
+        gl.bind_vertex_array(Some(vao));
+        gl.vertex_attrib_pointer_f32(
+            0,
+            3,
+            glow::FLOAT,
+            false,
+            core::mem::size_of::<f32>() as i32 * 3,
+            0,
+        );
+
+        Shape {
+            vbo,
+            vao,
+            ibo,
+            num_elts: 0,
+        }
+    }
+
+    fn draw(&self, gl: &Context, gl_type: u32) {
+        // Assumes program, uniforms, etc. are set.
+        unsafe {
+            gl.bind_vertex_array(Some(self.vao));
+            gl.enable_vertex_attrib_array(0);
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
+            gl.draw_elements(gl_type, self.num_elts, glow::UNSIGNED_SHORT, 0);
+            gl.disable_vertex_attrib_array(0);
+        }
+    }
+
+    fn close(&self, gl: &Context) {
+        unsafe {
+            gl.delete_vertex_array(self.vao);
+            gl.delete_buffer(self.vbo);
+            gl.delete_buffer(self.ibo);
+        }
+    }
+}
+
+struct Drawable {
+    program: Program,
+    grid: Shape,
     tilt_id: UniformLocation,
     tilt: f32,
     turn_id: UniformLocation,
     turn: f32,
     x_scale_id: UniformLocation,
     y_scale_id: UniformLocation,
+    color_id: UniformLocation,
     grid_size: usize,
     z_scale: f32,
 }
@@ -487,7 +541,7 @@ const FRAG_SRC: &str = include_str!("shader/fragment.glsl");
 impl Drawable {
     fn new(gl: &Context, shader_version: &str) -> Drawable {
         unsafe {
-            let (vbo, vao, ibo) = Self::create_gl_arrays(gl);
+            let grid = Shape::new(gl);
 
             let program = gl.create_program().expect("Cannot create program");
 
@@ -520,23 +574,23 @@ impl Drawable {
             let turn_id = gl.get_uniform_location(program, "turn").unwrap();
             let x_scale_id = gl.get_uniform_location(program, "x_scale").unwrap();
             let y_scale_id = gl.get_uniform_location(program, "y_scale").unwrap();
+            let color_id = gl.get_uniform_location(program, "color").unwrap();
 
             for shader in shaders {
                 gl.detach_shader(program, shader);
                 gl.delete_shader(shader);
             }
 
-            let this = Drawable {
+            let mut this = Drawable {
                 program,
-                vao,
-                vbo,
-                ibo,
+                grid,
                 tilt_id,
                 tilt: 30.0f32,
                 turn_id,
                 turn: 0.0f32,
                 x_scale_id,
                 y_scale_id,
+                color_id,
                 grid_size: 30,
                 z_scale: 0.25f32,
             };
@@ -600,14 +654,14 @@ impl Drawable {
     }
 
     // Regenerate the grid used by OpenGL.
-    unsafe fn regrid(&self, gl: &Context) {
+    unsafe fn regrid(&mut self, gl: &Context) {
         // Generate the vertices.
         let vertices = Self::create_grid(self.grid_size, self.z_scale);
         let vertices_u8: &[u8] = core::slice::from_raw_parts(
             vertices.as_ptr() as *const u8,
             vertices.len() * core::mem::size_of::<f32>(),
         );
-        gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
+        gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.grid.vbo));
         gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
 
         // Generate the indices.
@@ -616,37 +670,17 @@ impl Drawable {
             indices.as_ptr() as *const u8,
             indices.len() * core::mem::size_of::<f32>(),
         );
-        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
+        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.grid.ibo));
         gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
-    }
 
-    unsafe fn create_gl_arrays(gl: &Context) -> (Buffer, VertexArray, Buffer) {
-        // We construct buffer, data will be uploaded later.
-        let ibo = gl.create_buffer().unwrap();
-        let vbo = gl.create_buffer().unwrap();
-        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
-
-        // We now construct a vertex array to describe the format of the input buffer
-        let vao = gl.create_vertex_array().unwrap();
-        gl.bind_vertex_array(Some(vao));
-        gl.vertex_attrib_pointer_f32(
-            0,
-            3,
-            glow::FLOAT,
-            false,
-            core::mem::size_of::<f32>() as i32 * 3,
-            0,
-        );
-
-        (vbo, vao, ibo)
+        self.grid.num_elts = (self.grid_size * (self.grid_size + 1) * 4) as i32;
     }
 
     fn draw(&mut self, gl: &Context, width: u32, height: u32) {
         unsafe {
+            // Set up state shared across lines.
+            gl.viewport(0, 0, width as i32, height as i32);
             gl.use_program(Some(self.program));
-            gl.bind_vertex_array(Some(self.vao));
-            gl.enable_vertex_attrib_array(0);
-            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
             gl.uniform_1_f32(Some(&self.tilt_id), self.tilt);
             gl.uniform_1_f32(Some(&self.turn_id), self.turn);
             gl.uniform_1_f32(
@@ -657,18 +691,16 @@ impl Drawable {
                 Some(&self.y_scale_id),
                 (width as f32 / height as f32).min(1.0f32),
             );
-            gl.viewport(0, 0, width as i32, height as i32);
-            let num_elts = (self.grid_size * (self.grid_size + 1) * 4) as i32;
-            gl.draw_elements(glow::LINES, num_elts, glow::UNSIGNED_SHORT, 0);
-            gl.disable_vertex_attrib_array(0);
+
+            gl.uniform_3_f32(Some(&self.color_id), 1.0f32, 1.0f32, 1.0f32);
+            self.grid.draw(&gl, glow::LINES);
         }
     }
 
     fn close(&self, gl: &Context) {
         unsafe {
             gl.delete_program(self.program);
-            gl.delete_vertex_array(self.vao);
-            gl.delete_buffer(self.vbo);
         }
+        self.grid.close(gl);
     }
 }

@@ -18,12 +18,13 @@ uniform float y_scale;
 uniform float tilt;
 uniform float turn;
 
+uniform vec3 color;
+
 in vec3 in_vert;
 
+out vec3 base_color;
+
 void main() {
-    // TODO: Need to set Z to avoid clipping.
-
-
     float tilt_rad = -tilt * M_PI / 180.0;
     float turn_rad =  turn * M_PI / 180.0;
 
@@ -63,4 +64,6 @@ void main() {
     );
 
     gl_Position = (projection * scale * rot_tilt * rot_turn * vec4(in_vert.xzy, 1));
+
+    base_color = color;
 }
