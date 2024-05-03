@@ -475,29 +475,31 @@ struct Shape {
 
 impl Shape {
     // Create vertex and index buffers, and vertex array to describe vertex buffer.
-    unsafe fn new(gl: &Context) -> Shape {
-        // We construct buffer, data will be uploaded later.
-        let ibo = gl.create_buffer().unwrap();
-        let vbo = gl.create_buffer().unwrap();
-        gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
+    fn new(gl: &Context) -> Shape {
+        unsafe {
+            // We construct buffer, data will be uploaded later.
+            let ibo = gl.create_buffer().unwrap();
+            let vbo = gl.create_buffer().unwrap();
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(vbo));
 
-        // We now construct a vertex array to describe the format of the input buffer
-        let vao = gl.create_vertex_array().unwrap();
-        gl.bind_vertex_array(Some(vao));
-        gl.vertex_attrib_pointer_f32(
-            0,
-            3,
-            glow::FLOAT,
-            false,
-            core::mem::size_of::<f32>() as i32 * 3,
-            0,
-        );
+            // We now construct a vertex array to describe the format of the input buffer
+            let vao = gl.create_vertex_array().unwrap();
+            gl.bind_vertex_array(Some(vao));
+            gl.vertex_attrib_pointer_f32(
+                0,
+                3,
+                glow::FLOAT,
+                false,
+                core::mem::size_of::<f32>() as i32 * 3,
+                0,
+            );
 
-        Shape {
-            vbo,
-            vao,
-            ibo,
-            num_elts: 0,
+            Shape {
+                vbo,
+                vao,
+                ibo,
+                num_elts: 0,
+            }
         }
     }
 
@@ -524,6 +526,7 @@ impl Shape {
 struct Drawable {
     program: Program,
     grid: Shape,
+    paths: Shape,
     tilt_id: UniformLocation,
     tilt: f32,
     turn_id: UniformLocation,
@@ -542,6 +545,7 @@ impl Drawable {
     fn new(gl: &Context, shader_version: &str) -> Drawable {
         unsafe {
             let grid = Shape::new(gl);
+            let paths = Shape::new(gl);
 
             let program = gl.create_program().expect("Cannot create program");
 
@@ -584,6 +588,7 @@ impl Drawable {
             let mut this = Drawable {
                 program,
                 grid,
+                paths,
                 tilt_id,
                 tilt: 30.0f32,
                 turn_id,
@@ -595,6 +600,7 @@ impl Drawable {
                 z_scale: 0.25f32,
             };
             this.regrid(gl);
+            this.repath(gl);
             this
         }
     }
@@ -613,11 +619,14 @@ impl Drawable {
                 .add(egui::Slider::new(&mut self.z_scale, -1.0f32..=1.0f32).text("Z scale"))
                 .changed();
             if needs_regrid {
-                unsafe {
-                    self.regrid(gl);
-                }
+                self.regrid(gl);
+                self.repath(gl);
             }
         });
+    }
+
+    fn z(x: f32, y: f32) -> f32 {
+        (y * 4.0 * std::f32::consts::PI).sin() * x * x
     }
 
     fn create_grid(grid_size: usize, z_scale: f32) -> Vec<f32> {
@@ -628,7 +637,7 @@ impl Drawable {
                 let y_coord = (y as f32 / grid_size as f32) * 2.0f32 - 1.0f32;
                 v.push(x_coord);
                 v.push(y_coord);
-                v.push((y_coord * 4.0 * std::f32::consts::PI).sin() * x_coord * x_coord * z_scale);
+                v.push(Self::z(x_coord, y_coord) * z_scale);
             }
         }
         v
@@ -654,26 +663,65 @@ impl Drawable {
     }
 
     // Regenerate the grid used by OpenGL.
-    unsafe fn regrid(&mut self, gl: &Context) {
-        // Generate the vertices.
-        let vertices = Self::create_grid(self.grid_size, self.z_scale);
-        let vertices_u8: &[u8] = core::slice::from_raw_parts(
-            vertices.as_ptr() as *const u8,
-            vertices.len() * core::mem::size_of::<f32>(),
-        );
-        gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.grid.vbo));
-        gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
+    fn regrid(&mut self, gl: &Context) {
+        unsafe {
+            // Generate the vertices.
+            let vertices = Self::create_grid(self.grid_size, self.z_scale);
+            let vertices_u8: &[u8] = core::slice::from_raw_parts(
+                vertices.as_ptr() as *const u8,
+                vertices.len() * core::mem::size_of::<f32>(),
+            );
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.grid.vbo));
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
 
-        // Generate the indices.
-        let indices = Self::create_grid_indices(self.grid_size);
-        let indices_u8: &[u8] = core::slice::from_raw_parts(
-            indices.as_ptr() as *const u8,
-            indices.len() * core::mem::size_of::<f32>(),
-        );
-        gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.grid.ibo));
-        gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
+            // Generate the indices.
+            let indices = Self::create_grid_indices(self.grid_size);
+            let indices_u8: &[u8] = core::slice::from_raw_parts(
+                indices.as_ptr() as *const u8,
+                indices.len() * core::mem::size_of::<f32>(),
+            );
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.grid.ibo));
+            gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
 
-        self.grid.num_elts = (self.grid_size * (self.grid_size + 1) * 4) as i32;
+            // TODO: NB:self.grid.num_elts = indices.len().
+            self.grid.num_elts = (self.grid_size * (self.grid_size + 1) * 4) as i32;
+        }
+    }
+
+    // TODO: Share code.
+    fn repath(&mut self, gl: &Context) {
+        unsafe {
+            // Generate the vertices.
+            let vertices = (0..=self.grid_size)
+                .map(|x| {
+                    let y = (x as f32 / self.grid_size as f32) * 2.0 - 1.0;
+                    [y, y, Self::z(y, y) * self.z_scale]
+                })
+                .flatten()
+                .collect::<Vec<_>>();
+            log::info!("Curve: {:?}", vertices);
+            let vertices_u8: &[u8] = core::slice::from_raw_parts(
+                vertices.as_ptr() as *const u8,
+                vertices.len() * core::mem::size_of::<f32>(),
+            );
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.paths.vbo));
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
+
+            // Generate the indices.
+            let indices = (0..self.grid_size as u16)
+                .map(|i| [i, i + 1])
+                .flatten()
+                .collect::<Vec<u16>>();
+            log::info!("CurveIdxs: {:?}", indices);
+            let indices_u8: &[u8] = core::slice::from_raw_parts(
+                indices.as_ptr() as *const u8,
+                indices.len() * core::mem::size_of::<f32>(),
+            );
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.paths.ibo));
+            gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
+
+            self.paths.num_elts = indices.len() as i32;
+        }
     }
 
     fn draw(&mut self, gl: &Context, width: u32, height: u32) {
@@ -694,6 +742,9 @@ impl Drawable {
 
             gl.uniform_3_f32(Some(&self.color_id), 1.0f32, 1.0f32, 1.0f32);
             self.grid.draw(&gl, glow::LINES);
+
+            gl.uniform_3_f32(Some(&self.color_id), 1.0f32, 0.5f32, 0.5f32);
+            self.paths.draw(&gl, glow::LINES);
         }
     }
 
