@@ -536,6 +536,8 @@ struct Drawable {
     color_id: UniformLocation,
     grid_size: usize,
     z_scale: f32,
+    ray_start: (f32, f32),
+    ray_dir: f32,
 }
 
 const VERT_SRC: &str = include_str!("shader/vertex.glsl");
@@ -598,6 +600,8 @@ impl Drawable {
                 color_id,
                 grid_size: 30,
                 z_scale: 0.25f32,
+                ray_start: (0.0f32, -1.0f32),
+                ray_dir: 0.0f32,
             };
             this.regrid(gl);
             this.repath(gl);
@@ -610,6 +614,7 @@ impl Drawable {
             // TODO
             // if ui.button("Quit").clicked() {}
             let mut needs_regrid = false;
+            let mut needs_repath = false;
             ui.add(egui::Slider::new(&mut self.tilt, -90.0..=90.0).text("Tilt"));
             ui.add(egui::Slider::new(&mut self.turn, -180.0..=180.0).text("Turn"));
             needs_regrid |= ui
@@ -618,8 +623,27 @@ impl Drawable {
             needs_regrid |= ui
                 .add(egui::Slider::new(&mut self.z_scale, -1.0f32..=1.0f32).text("Z scale"))
                 .changed();
+            needs_repath |= ui
+                .add(
+                    egui::Slider::new(&mut self.ray_start.0, -1.0f32..=1.0f32).text("X ray origin"),
+                )
+                .changed();
+            needs_repath |= ui
+                .add(
+                    egui::Slider::new(&mut self.ray_start.1, -1.0f32..=1.0f32).text("Y ray origin"),
+                )
+                .changed();
+            needs_repath |= ui
+                .add(
+                    egui::Slider::new(&mut self.ray_start.1, -180.0f32..=180.0f32)
+                        .text("Ray angle"),
+                )
+                .changed();
+
             if needs_regrid {
                 self.regrid(gl);
+            }
+            if needs_regrid || needs_repath {
                 self.repath(gl);
             }
         });
@@ -683,8 +707,7 @@ impl Drawable {
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.grid.ibo));
             gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
 
-            // TODO: NB:self.grid.num_elts = indices.len().
-            self.grid.num_elts = (self.grid_size * (self.grid_size + 1) * 4) as i32;
+            self.grid.num_elts = indices.len() as i32;
         }
     }
 
@@ -692,14 +715,26 @@ impl Drawable {
     fn repath(&mut self, gl: &Context) {
         unsafe {
             // Generate the vertices.
-            let vertices = (0..=self.grid_size)
-                .map(|x| {
-                    let y = (x as f32 / self.grid_size as f32) * 2.0 - 1.0;
-                    [y, y, Self::z(y, y) * self.z_scale]
-                })
-                .flatten()
-                .collect::<Vec<_>>();
-            log::info!("Curve: {:?}", vertices);
+            let mut vertices: Vec<f32> = Vec::new();
+            let (mut x, mut y) = self.ray_start;
+            while x.abs() <= 1.0f32 && y.abs() <= 1.0f32 {
+                vertices.push(x);
+                vertices.push(y);
+                vertices.push(Self::z(x, y) * self.z_scale);
+                // TODO: Variable angle!
+                x += 0.1f32;
+                y += 0.2f32;
+            }
+            // Clip last point against grid and add.
+            let x_excess = ((x.abs()) - 1.0f32).max(0.0f32) / 0.1f32;
+            let y_excess = ((y.abs()) - 1.0f32).max(0.0f32) / 0.2f32;
+            let fract = x_excess.max(y_excess);
+            x -= fract * 0.1f32;
+            y -= fract * 0.2f32;
+            vertices.push(x);
+            vertices.push(y);
+            vertices.push(Self::z(x, y) * self.z_scale);
+
             let vertices_u8: &[u8] = core::slice::from_raw_parts(
                 vertices.as_ptr() as *const u8,
                 vertices.len() * core::mem::size_of::<f32>(),
@@ -708,11 +743,7 @@ impl Drawable {
             gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
 
             // Generate the indices.
-            let indices = (0..self.grid_size as u16)
-                .map(|i| [i, i + 1])
-                .flatten()
-                .collect::<Vec<u16>>();
-            log::info!("CurveIdxs: {:?}", indices);
+            let indices: Vec<u16> = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
             let indices_u8: &[u8] = core::slice::from_raw_parts(
                 indices.as_ptr() as *const u8,
                 indices.len() * core::mem::size_of::<f32>(),
@@ -744,7 +775,7 @@ impl Drawable {
             self.grid.draw(&gl, glow::LINES);
 
             gl.uniform_3_f32(Some(&self.color_id), 1.0f32, 0.5f32, 0.5f32);
-            self.paths.draw(&gl, glow::LINES);
+            self.paths.draw(&gl, glow::LINE_STRIP);
         }
     }
 

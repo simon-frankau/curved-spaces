@@ -29,11 +29,14 @@ void main() {
     float turn_rad =  turn * M_PI / 180.0;
 
     // Rotate the image in the XZ plane (around Y axis).
+    //
+    // We also flip the Z axis, in combination with the xzy swizzle
+    // below, to get the grid around the way we want it.
     mat4 rot_turn = mat4(
-        vec4(cos(turn_rad),  0.0,  sin(turn_rad), 0.0),
-        vec4(          0.0,  1.0,            0.0, 0.0),
-        vec4(sin(turn_rad),  0.0, -cos(turn_rad), 0.0),
-        vec4(0.0,            0.0,            0.0, 1.0)
+        vec4( cos(turn_rad),  0.0,  sin(turn_rad), 0.0),
+        vec4(           0.0,  1.0,            0.0, 0.0),
+        vec4(-sin(turn_rad),  0.0,  cos(turn_rad), 0.0),
+        vec4(           0.0,  0.0,            0.0, 1.0)
     );
 
     // Tilt the image in the YZ plane (around X axis).
