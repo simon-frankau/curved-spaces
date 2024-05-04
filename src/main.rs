@@ -5,6 +5,9 @@
 use anyhow::*;
 use glow::{Context, *};
 
+// Size of a step when tracing a ray.
+const RAY_STEP: f32 = 0.01f32;
+
 ////////////////////////////////////////////////////////////////////////
 // winit: Shared between wasm32 and glutin_winit.
 //
@@ -600,7 +603,7 @@ impl Drawable {
                 color_id,
                 grid_size: 30,
                 z_scale: 0.25f32,
-                ray_start: (0.0f32, -1.0f32),
+                ray_start: (0.0f32, -0.9f32),
                 ray_dir: 0.0f32,
             };
             this.regrid(gl);
@@ -634,10 +637,7 @@ impl Drawable {
                 )
                 .changed();
             needs_repath |= ui
-                .add(
-                    egui::Slider::new(&mut self.ray_start.1, -180.0f32..=180.0f32)
-                        .text("Ray angle"),
-                )
+                .add(egui::Slider::new(&mut self.ray_dir, -180.0f32..=180.0f32).text("Ray angle"))
                 .changed();
 
             if needs_regrid {
@@ -716,21 +716,23 @@ impl Drawable {
         unsafe {
             // Generate the vertices.
             let mut vertices: Vec<f32> = Vec::new();
+            let ray_dir_rad = self.ray_dir * std::f32::consts::PI / 180.0f32;
+            let dx = ray_dir_rad.sin() * RAY_STEP;
+            let dy = ray_dir_rad.cos() * RAY_STEP;
             let (mut x, mut y) = self.ray_start;
             while x.abs() <= 1.0f32 && y.abs() <= 1.0f32 {
                 vertices.push(x);
                 vertices.push(y);
                 vertices.push(Self::z(x, y) * self.z_scale);
-                // TODO: Variable angle!
-                x += 0.1f32;
-                y += 0.2f32;
+                x += dx;
+                y += dy;
             }
             // Clip last point against grid and add.
-            let x_excess = ((x.abs()) - 1.0f32).max(0.0f32) / 0.1f32;
-            let y_excess = ((y.abs()) - 1.0f32).max(0.0f32) / 0.2f32;
+            let x_excess = ((x.abs()) - 1.0f32) / dx.abs();
+            let y_excess = ((y.abs()) - 1.0f32) / dy.abs();
             let fract = x_excess.max(y_excess);
-            x -= fract * 0.1f32;
-            y -= fract * 0.2f32;
+            x -= fract * dx;
+            y -= fract * dy;
             vertices.push(x);
             vertices.push(y);
             vertices.push(Self::z(x, y) * self.z_scale);
