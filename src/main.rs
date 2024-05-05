@@ -506,6 +506,26 @@ impl Shape {
         }
     }
 
+    fn rebuild(&mut self, gl: &Context, vertices: &[f32], indices: &[u16]) {
+        unsafe {
+            let vertices_u8: &[u8] = core::slice::from_raw_parts(
+                vertices.as_ptr() as *const u8,
+                vertices.len() * core::mem::size_of::<f32>(),
+            );
+            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
+            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
+
+            let indices_u8: &[u8] = core::slice::from_raw_parts(
+                indices.as_ptr() as *const u8,
+                indices.len() * core::mem::size_of::<f32>(),
+            );
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
+            gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
+
+            self.num_elts = indices.len() as i32;
+        }
+    }
+
     fn draw(&self, gl: &Context, gl_type: u32) {
         // Assumes program, uniforms, etc. are set.
         unsafe {
@@ -692,27 +712,9 @@ impl Drawable {
 
     // Regenerate the grid used by OpenGL.
     fn regrid(&mut self, gl: &Context) {
-        unsafe {
-            // Generate the vertices.
-            let vertices = Self::create_grid(self.grid_size, self.z_scale);
-            let vertices_u8: &[u8] = core::slice::from_raw_parts(
-                vertices.as_ptr() as *const u8,
-                vertices.len() * core::mem::size_of::<f32>(),
-            );
-            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.grid.vbo));
-            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
-
-            // Generate the indices.
-            let indices = Self::create_grid_indices(self.grid_size);
-            let indices_u8: &[u8] = core::slice::from_raw_parts(
-                indices.as_ptr() as *const u8,
-                indices.len() * core::mem::size_of::<f32>(),
-            );
-            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.grid.ibo));
-            gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
-
-            self.grid.num_elts = indices.len() as i32;
-        }
+        let vertices = Self::create_grid(self.grid_size, self.z_scale);
+        let indices = Self::create_grid_indices(self.grid_size);
+        self.grid.rebuild(gl, &vertices, &indices);
     }
 
     fn normal_at(&self, x: f32, y: f32) -> (f32, f32, f32) {
@@ -755,62 +757,46 @@ impl Drawable {
         (px, py, pz)
     }
 
-    // TODO: Share code.
     fn repath(&mut self, gl: &Context) {
-        unsafe {
-            // Generate the vertices.
-            let mut vertices: Vec<f32> = Vec::new();
-            let ray_dir_rad = self.ray_dir * std::f32::consts::PI / 180.0f32;
-            let mut dx = ray_dir_rad.sin() * RAY_STEP;
-            let mut dy = ray_dir_rad.cos() * RAY_STEP;
-            let (mut x, mut y) = self.ray_start;
-            let mut z = Self::z(x, y) * self.z_scale;
-            // Calculate initial dz by taking a step back.
-            let mut dz = z - Self::z(x - dx, y - dy) * self.z_scale;
+        // Generate the vertices.
+        let mut vertices: Vec<f32> = Vec::new();
+        let ray_dir_rad = self.ray_dir * std::f32::consts::PI / 180.0f32;
+        let mut dx = ray_dir_rad.sin() * RAY_STEP;
+        let mut dy = ray_dir_rad.cos() * RAY_STEP;
+        let (mut x, mut y) = self.ray_start;
+        let mut z = Self::z(x, y) * self.z_scale;
+        // Calculate initial dz by taking a step back.
+        let mut dz = z - Self::z(x - dx, y - dy) * self.z_scale;
 
-            while x.abs() <= 1.0f32 && y.abs() <= 1.0f32 {
-                vertices.push(x);
-                vertices.push(y);
-                vertices.push(z);
-                let (old_x, old_y, old_z) = (x, y, z);
-
-                x += dx;
-                y += dy;
-                z += dz;
-
-                (x, y, z) = self.nearest_point_to(x, y, z);
-
-                // TODO: Normalise?
-                (dx, dy, dz) = (x - old_x, y - old_y, z - old_z);
-            }
-            // Clip last point against grid and add.
-            let x_excess = ((x.abs()) - 1.0f32) / dx.abs();
-            let y_excess = ((y.abs()) - 1.0f32) / dy.abs();
-            let fract = x_excess.max(y_excess);
-            x -= fract * dx;
-            y -= fract * dy;
+        while x.abs() <= 1.0f32 && y.abs() <= 1.0f32 {
             vertices.push(x);
             vertices.push(y);
-            vertices.push(Self::z(x, y) * self.z_scale);
+            vertices.push(z);
+            let (old_x, old_y, old_z) = (x, y, z);
 
-            let vertices_u8: &[u8] = core::slice::from_raw_parts(
-                vertices.as_ptr() as *const u8,
-                vertices.len() * core::mem::size_of::<f32>(),
-            );
-            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.paths.vbo));
-            gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
+            x += dx;
+            y += dy;
+            z += dz;
 
-            // Generate the indices.
-            let indices: Vec<u16> = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
-            let indices_u8: &[u8] = core::slice::from_raw_parts(
-                indices.as_ptr() as *const u8,
-                indices.len() * core::mem::size_of::<f32>(),
-            );
-            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.paths.ibo));
-            gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
+            (x, y, z) = self.nearest_point_to(x, y, z);
 
-            self.paths.num_elts = indices.len() as i32;
+            // TODO: Normalise?
+            (dx, dy, dz) = (x - old_x, y - old_y, z - old_z);
         }
+        // Clip last point against grid and add.
+        let x_excess = ((x.abs()) - 1.0f32) / dx.abs();
+        let y_excess = ((y.abs()) - 1.0f32) / dy.abs();
+        let fract = x_excess.max(y_excess);
+        x -= fract * dx;
+        y -= fract * dy;
+        vertices.push(x);
+        vertices.push(y);
+        vertices.push(Self::z(x, y) * self.z_scale);
+
+        // Generate the indices.
+        let indices: Vec<u16> = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
+
+        self.paths.rebuild(gl, &vertices, &indices);
     }
 
     fn draw(&mut self, gl: &Context, width: u32, height: u32) {
