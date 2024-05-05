@@ -673,38 +673,43 @@ impl Drawable {
         });
     }
 
-    fn z(x: f32, y: f32) -> f32 {
-        (y * 4.0 * std::f32::consts::PI).sin() * x * x
+    fn z64(&self, x: f64, y: f64) -> f64 {
+        (y * 4.0 * std::f64::consts::PI).sin() * x * x * self.z_scale as f64
     }
 
-    fn create_grid(grid_size: usize, z_scale: f32) -> Vec<f32> {
+    // TODO: Useful for OpenGL, but probably not worth it.
+    fn z32(&self, x: f32, y: f32) -> f32 {
+        self.z64(x as f64, y as f64) as f32
+    }
+
+    fn create_grid(&self) -> Vec<f32> {
         let mut v = Vec::new();
-        for x in 0..=grid_size {
-            let x_coord = (x as f32 / grid_size as f32) * 2.0f32 - 1.0f32;
-            for y in 0..=grid_size {
-                let y_coord = (y as f32 / grid_size as f32) * 2.0f32 - 1.0f32;
+        for x in 0..=self.grid_size {
+            let x_coord = (x as f32 / self.grid_size as f32) * 2.0f32 - 1.0f32;
+            for y in 0..=self.grid_size {
+                let y_coord = (y as f32 / self.grid_size as f32) * 2.0f32 - 1.0f32;
                 v.push(x_coord);
                 v.push(y_coord);
-                v.push(Self::z(x_coord, y_coord) * z_scale);
+                v.push(self.z32(x_coord, y_coord));
             }
         }
         v
     }
 
-    fn create_grid_indices(grid_size: usize) -> Vec<u16> {
+    fn create_grid_indices(&self) -> Vec<u16> {
         let mut v = Vec::new();
-        for x in 0..=grid_size as u16 {
-            let x_idx = x * (grid_size as u16 + 1);
-            for y in 0..grid_size as u16 {
+        for x in 0..=self.grid_size as u16 {
+            let x_idx = x * (self.grid_size as u16 + 1);
+            for y in 0..self.grid_size as u16 {
                 v.push(x_idx + y);
                 v.push(x_idx + y + 1);
             }
         }
-        for x in 0..grid_size as u16 {
-            let x_idx = x * (grid_size as u16 + 1);
-            for y in 0..=grid_size as u16 {
+        for x in 0..self.grid_size as u16 {
+            let x_idx = x * (self.grid_size as u16 + 1);
+            for y in 0..=self.grid_size as u16 {
                 v.push(x_idx + y);
-                v.push(x_idx + y + grid_size as u16 + 1);
+                v.push(x_idx + y + self.grid_size as u16 + 1);
             }
         }
         v
@@ -712,8 +717,8 @@ impl Drawable {
 
     // Regenerate the grid used by OpenGL.
     fn regrid(&mut self, gl: &Context) {
-        let vertices = Self::create_grid(self.grid_size, self.z_scale);
-        let indices = Self::create_grid_indices(self.grid_size);
+        let vertices = self.create_grid();
+        let indices = self.create_grid_indices();
         self.grid.rebuild(gl, &vertices, &indices);
     }
 
@@ -730,12 +735,11 @@ impl Drawable {
 
         // Use f64s for extra precision here.
         let (x, y) = (x as f64, y as f64);
-        let z = |x, y: f64| (y * 4.0 * std::f64::consts::PI).sin() * x * x * self.z_scale as f64;
-        let z0 = z(x, y);
+        let z0 = self.z64(x, y);
         const EPS: f64 = 1.0e-7;
 
-        let dzdx = (z(x + EPS, y) - z0) / EPS;
-        let dzdy = (z(x, y + EPS) - z0) / EPS;
+        let dzdx = (self.z64(x + EPS, y) - z0) / EPS;
+        let dzdy = (self.z64(x, y + EPS) - z0) / EPS;
 
         let norm = (1.0 + dzdx * dzdx + dzdy * dzdy).powf(-0.5);
 
@@ -743,7 +747,7 @@ impl Drawable {
     }
 
     fn nearest_point_to(&self, x: f32, y: f32, z: f32) -> (f32, f32, f32) {
-        let (mut px, mut py, mut pz) = (x, y, Self::z(x, y) * self.z_scale);
+        let (mut px, mut py, mut pz) = (x, y, self.z32(x, y));
         for _ in 0..self.iter {
             let (dx, dy, dz) = (x - px, y - py, z - pz);
             let (nx, ny, nz) = self.normal_at(px, py);
@@ -751,8 +755,7 @@ impl Drawable {
 
             px += dx - nx * len;
             py += dy - ny * len;
-            // pz -= dz - nz * len;
-            pz = Self::z(px, py) * self.z_scale
+            pz = self.z32(px, py)
         }
         (px, py, pz)
     }
@@ -764,9 +767,9 @@ impl Drawable {
         let mut dx = ray_dir_rad.sin() * RAY_STEP;
         let mut dy = ray_dir_rad.cos() * RAY_STEP;
         let (mut x, mut y) = self.ray_start;
-        let mut z = Self::z(x, y) * self.z_scale;
+        let mut z = self.z32(x, y);
         // Calculate initial dz by taking a step back.
-        let mut dz = z - Self::z(x - dx, y - dy) * self.z_scale;
+        let mut dz = z - self.z32(x - dx, y - dy);
 
         while x.abs() <= 1.0f32 && y.abs() <= 1.0f32 {
             vertices.push(x);
@@ -791,7 +794,7 @@ impl Drawable {
         y -= fract * dy;
         vertices.push(x);
         vertices.push(y);
-        vertices.push(Self::z(x, y) * self.z_scale);
+        vertices.push(self.z32(x, y));
 
         // Generate the indices.
         let indices: Vec<u16> = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
