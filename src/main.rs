@@ -541,6 +541,7 @@ struct Drawable {
     z_scale: f32,
     ray_start: (f32, f32),
     ray_dir: f32,
+    iter: usize,
 }
 
 const VERT_SRC: &str = include_str!("shader/vertex.glsl");
@@ -605,6 +606,7 @@ impl Drawable {
                 z_scale: 0.25f32,
                 ray_start: (0.0f32, -0.9f32),
                 ray_dir: 0.0f32,
+                iter: 1,
             };
             this.regrid(gl);
             this.repath(gl);
@@ -639,7 +641,9 @@ impl Drawable {
             needs_repath |= ui
                 .add(egui::Slider::new(&mut self.ray_dir, -180.0f32..=180.0f32).text("Ray angle"))
                 .changed();
-
+            needs_repath |= ui
+                .add(egui::Slider::new(&mut self.iter, 1..=10).text("Iterations"))
+                .changed();
             if needs_regrid {
                 self.regrid(gl);
             }
@@ -711,21 +715,73 @@ impl Drawable {
         }
     }
 
+    fn normal_at(&self, x: f32, y: f32) -> (f32, f32, f32) {
+        // dz/dx gives a tangent vector: (1, 0, dz/dx).
+        // dz/dy gives a tangent vector: (0, 1, dz/dy).
+        // Cross product is normal: (-dz/dx, -dy/dx, 1).
+        //
+        // (This generalises into higher dimensions, but is a simple
+        // explanation for 3D.)
+
+        // We could do this algebraically, but finite difference is
+        // easy and general.
+
+        // Use f64s for extra precision here.
+        let (x, y) = (x as f64, y as f64);
+        let z = |x, y: f64| (y * 4.0 * std::f64::consts::PI).sin() * x * x * self.z_scale as f64;
+        let z0 = z(x, y);
+        const EPS: f64 = 1.0e-7;
+
+        let dzdx = (z(x + EPS, y) - z0) / EPS;
+        let dzdy = (z(x, y + EPS) - z0) / EPS;
+
+        let norm = (1.0 + dzdx * dzdx + dzdy * dzdy).powf(-0.5);
+
+        ((-dzdx * norm) as f32, (-dzdy * norm) as f32, norm as f32)
+    }
+
+    fn nearest_point_to(&self, x: f32, y: f32, z: f32) -> (f32, f32, f32) {
+        let (mut px, mut py, mut pz) = (x, y, Self::z(x, y) * self.z_scale);
+        for _ in 0..self.iter {
+            let (dx, dy, dz) = (x - px, y - py, z - pz);
+            let (nx, ny, nz) = self.normal_at(px, py);
+            let len = nx * dx + ny * dy + nz * dz;
+
+            px += dx - nx * len;
+            py += dy - ny * len;
+            // pz -= dz - nz * len;
+            pz = Self::z(px, py) * self.z_scale
+        }
+        (px, py, pz)
+    }
+
     // TODO: Share code.
     fn repath(&mut self, gl: &Context) {
         unsafe {
             // Generate the vertices.
             let mut vertices: Vec<f32> = Vec::new();
             let ray_dir_rad = self.ray_dir * std::f32::consts::PI / 180.0f32;
-            let dx = ray_dir_rad.sin() * RAY_STEP;
-            let dy = ray_dir_rad.cos() * RAY_STEP;
+            let mut dx = ray_dir_rad.sin() * RAY_STEP;
+            let mut dy = ray_dir_rad.cos() * RAY_STEP;
             let (mut x, mut y) = self.ray_start;
+            let mut z = Self::z(x, y) * self.z_scale;
+            // Calculate initial dz by taking a step back.
+            let mut dz = z - Self::z(x - dx, y - dy) * self.z_scale;
+
             while x.abs() <= 1.0f32 && y.abs() <= 1.0f32 {
                 vertices.push(x);
                 vertices.push(y);
-                vertices.push(Self::z(x, y) * self.z_scale);
+                vertices.push(z);
+                let (old_x, old_y, old_z) = (x, y, z);
+
                 x += dx;
                 y += dy;
+                z += dz;
+
+                (x, y, z) = self.nearest_point_to(x, y, z);
+
+                // TODO: Normalise?
+                (dx, dy, dz) = (x - old_x, y - old_y, z - old_z);
             }
             // Clip last point against grid and add.
             let x_excess = ((x.abs()) - 1.0f32) / dx.abs();
@@ -773,7 +829,7 @@ impl Drawable {
                 (width as f32 / height as f32).min(1.0f32),
             );
 
-            gl.uniform_3_f32(Some(&self.color_id), 1.0f32, 1.0f32, 1.0f32);
+            gl.uniform_3_f32(Some(&self.color_id), 0.5f32, 0.5f32, 0.5f32);
             self.grid.draw(&gl, glow::LINES);
 
             gl.uniform_3_f32(Some(&self.color_id), 1.0f32, 0.5f32, 0.5f32);
