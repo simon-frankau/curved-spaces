@@ -469,6 +469,12 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum Function {
+    Plane,
+    SinXQuad,
+}
+
 struct Shape {
     vao: VertexArray,
     vbo: Buffer,
@@ -562,6 +568,7 @@ struct Drawable {
     ray_start: (f32, f32),
     ray_dir: f32,
     iter: usize,
+    func: Function,
 }
 
 const VERT_SRC: &str = include_str!("shader/vertex.glsl");
@@ -627,6 +634,7 @@ impl Drawable {
                 ray_start: (0.0f32, -0.9f32),
                 ray_dir: 0.0f32,
                 iter: 1,
+                func: Function::SinXQuad,
             };
             this.regrid(gl);
             this.repath(gl);
@@ -664,6 +672,15 @@ impl Drawable {
             needs_repath |= ui
                 .add(egui::Slider::new(&mut self.iter, 1..=10).text("Iterations"))
                 .changed();
+            // TODO: .changed() doesn't appear to work here.
+            needs_regrid |= egui::ComboBox::from_label("Function")
+                .selected_text(format!("{:?}", self.func))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.func, Function::Plane, "Plane");
+                    ui.selectable_value(&mut self.func, Function::SinXQuad, "Sin x Quad");
+                })
+                .response
+                .changed();
             if needs_regrid {
                 self.regrid(gl);
             }
@@ -674,7 +691,10 @@ impl Drawable {
     }
 
     fn z64(&self, x: f64, y: f64) -> f64 {
-        (y * 4.0 * std::f64::consts::PI).sin() * x * x * self.z_scale as f64
+        (match self.func {
+            Function::Plane => (x + y) * 0.5,
+            Function::SinXQuad => (y * 4.0 * std::f64::consts::PI).sin() * x * x,
+        }) * self.z_scale as f64
     }
 
     // TODO: Useful for OpenGL, but probably not worth it.
