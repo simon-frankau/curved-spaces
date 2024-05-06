@@ -571,6 +571,7 @@ struct Drawable {
     program: Program,
     grid: Shape,
     paths: Shape,
+    paths2: Shape,
     tilt_id: UniformLocation,
     tilt: f32,
     turn_id: UniformLocation,
@@ -594,6 +595,7 @@ impl Drawable {
         unsafe {
             let grid = Shape::new(gl);
             let paths = Shape::new(gl);
+            let paths2 = Shape::new(gl);
 
             let program = gl.create_program().expect("Cannot create program");
 
@@ -637,6 +639,7 @@ impl Drawable {
                 program,
                 grid,
                 paths,
+                paths2,
                 tilt_id,
                 tilt: 30.0f32,
                 turn_id,
@@ -807,9 +810,20 @@ impl Drawable {
     }
 
     fn repath(&mut self, gl: &Context) {
+        {
+            let (vertices, indices) = self.repath_aux(self.ray_dir);
+            self.paths.rebuild(gl, &vertices, &indices);
+        }
+        {
+            let (vertices, indices) = self.repath_aux(self.ray_dir + 180.0);
+            self.paths2.rebuild(gl, &vertices, &indices);
+        }
+    }
+
+    fn repath_aux(&mut self, ray_dir: f32) -> (Vec<f32>, Vec<u16>) {
         // Generate the vertices.
         let mut vertices: Vec<f32> = Vec::new();
-        let ray_dir_rad = self.ray_dir * std::f32::consts::PI / 180.0f32;
+        let ray_dir_rad = ray_dir * std::f32::consts::PI / 180.0f32;
         let mut dx = ray_dir_rad.sin() * RAY_STEP;
         let mut dy = ray_dir_rad.cos() * RAY_STEP;
         let (mut x, mut y) = self.ray_start;
@@ -845,7 +859,7 @@ impl Drawable {
         // Generate the indices.
         let indices: Vec<u16> = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
 
-        self.paths.rebuild(gl, &vertices, &indices);
+        (vertices, indices)
     }
 
     fn draw(&mut self, gl: &Context, width: u32, height: u32) {
@@ -869,6 +883,9 @@ impl Drawable {
 
             gl.uniform_3_f32(Some(&self.color_id), 1.0f32, 0.5f32, 0.5f32);
             self.paths.draw(&gl, glow::LINE_STRIP);
+
+            gl.uniform_3_f32(Some(&self.color_id), 0.5f32, 01.0f32, 0.5f32);
+            self.paths2.draw(&gl, glow::LINE_STRIP);
         }
     }
 
