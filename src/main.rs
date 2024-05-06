@@ -469,13 +469,25 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Function {
     Plane,
     PosCurve,
     NegCurve,
     SinXLin,
     SinXQuad,
+}
+
+impl Function {
+    fn label(&self) -> &'static str {
+        match self {
+            Function::Plane => "Plane",
+            Function::PosCurve => "Positive curvature",
+            Function::NegCurve => "Negative curvature",
+            Function::SinXLin => "Sin x Linear",
+            Function::SinXQuad => "Sin x Quad",
+        }
+    }
 }
 
 struct Shape {
@@ -675,18 +687,23 @@ impl Drawable {
             needs_repath |= ui
                 .add(egui::Slider::new(&mut self.iter, 1..=10).text("Iterations"))
                 .changed();
-            // TODO: .changed() doesn't appear to work here.
             needs_regrid |= egui::ComboBox::from_label("Function")
-                .selected_text(format!("{:?}", self.func))
+                .selected_text(self.func.label())
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.func, Function::Plane, "Plane");
-                    ui.selectable_value(&mut self.func, Function::PosCurve, "Positive curvature");
-                    ui.selectable_value(&mut self.func, Function::NegCurve, "Negativee curvature");
-                    ui.selectable_value(&mut self.func, Function::SinXLin, "Sin x Linear");
-                    ui.selectable_value(&mut self.func, Function::SinXQuad, "Sin x Quad");
+                    [
+                        Function::Plane,
+                        Function::PosCurve,
+                        Function::NegCurve,
+                        Function::SinXLin,
+                        Function::SinXQuad,
+                    ]
+                    .iter()
+                    .map(|x| ui.selectable_value(&mut self.func, *x, x.label()).changed())
+                    // Force evaluation of whole list.
+                    .fold(false, |a, b| a || b)
                 })
-                .response
-                .changed();
+                .inner
+                .unwrap_or(false);
             if needs_regrid {
                 self.regrid(gl);
             }
