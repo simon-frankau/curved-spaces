@@ -472,6 +472,9 @@ fn main() -> Result<()> {
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Function {
     Plane,
+    PosCurve,
+    NegCurve,
+    SinXLin,
     SinXQuad,
 }
 
@@ -677,6 +680,9 @@ impl Drawable {
                 .selected_text(format!("{:?}", self.func))
                 .show_ui(ui, |ui| {
                     ui.selectable_value(&mut self.func, Function::Plane, "Plane");
+                    ui.selectable_value(&mut self.func, Function::PosCurve, "Positive curvature");
+                    ui.selectable_value(&mut self.func, Function::NegCurve, "Negativee curvature");
+                    ui.selectable_value(&mut self.func, Function::SinXLin, "Sin x Linear");
                     ui.selectable_value(&mut self.func, Function::SinXQuad, "Sin x Quad");
                 })
                 .response
@@ -693,6 +699,9 @@ impl Drawable {
     fn z64(&self, x: f64, y: f64) -> f64 {
         (match self.func {
             Function::Plane => (x + y) * 0.5,
+            Function::PosCurve => (x * x + y * y) * 0.5,
+            Function::NegCurve => (x * x - y * y) * 0.5,
+            Function::SinXLin => (y * 4.0 * std::f64::consts::PI).sin() * x,
             Function::SinXQuad => (y * 4.0 * std::f64::consts::PI).sin() * x * x,
         }) * self.z_scale as f64
     }
