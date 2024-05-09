@@ -5,8 +5,8 @@
 I'll come clean. My end goal is to visualise what a wormhole would
 actually look like. Not a physically accurate one, but at least a
 mathematically accurate one - what you'd get if you cut out a subspace
-in a pair of $\mathbb{R}^3$s and connected them with a "tube". I'm
-nowhere near that, right now.
+in a pair of $\mathbb{R}^3$ spaces and connected them with a
+"tube". I'm nowhere near that, right now.
 
 As a predecessor step, I'd like to do that for a pair of
 $\mathbb{R}^2$ spaces. Stepping back further, I'd like to understand
