@@ -1,5 +1,8 @@
 //
-// TODO: Initial GL-displaying thing.
+// Build a height-map of a real-valued function of two real variables,
+// representing a 2D manifold (?) embedded in 3D space, and try to
+// draw geodesics (curves of minimal length) on its surface, as an
+// attempt to understand how curved surfaces work.
 //
 
 use anyhow::*;
@@ -265,7 +268,7 @@ impl Platform {
         // TODO: Make parameters?
         let width = 1024;
         let height = 768;
-        let title = "Hello triangle!";
+        let title = "Curved Surfaces";
 
         use glutin::{
             config::{ConfigTemplateBuilder, GlConfig},
@@ -393,7 +396,7 @@ impl Platform {
         // TODO: Make parameters?
         let width = 1024;
         let height = 768;
-        let title = "Hello triangle!";
+        let title = "Curved Surfaces";
 
         let sdl = sdl2::init()?;
         let video = sdl.video()?;
@@ -719,7 +722,7 @@ impl Drawable {
     fn z64(&self, x: f64, y: f64) -> f64 {
         (match self.func {
             Function::Plane => (x + y) * 0.5,
-            Function::PosCurve => (x * x + y * y) * 0.5,
+            Function::PosCurve => -(x * x + y * y) * 0.5,
             Function::NegCurve => (x * x - y * y) * 0.5,
             Function::SinXLin => (y * 4.0 * std::f64::consts::PI).sin() * x,
             Function::SinXQuad => (y * 4.0 * std::f64::consts::PI).sin() * x * x,
@@ -841,6 +844,7 @@ impl Drawable {
             y += dy;
             z += dz;
 
+	    // See README.md for why we do this.
             (x, y, z) = self.nearest_point_to(x, y, z);
 
             // TODO: Normalise?
