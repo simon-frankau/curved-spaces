@@ -1,5 +1,7 @@
 # Simple Curved Space visualiser
 
+![Obligatory screenshot goes here](curved-surfaces.png)
+
 I'll come clean. My end goal is to visualise what a wormhole would
 actually look like. Not a physically accurate one, but at least a
 mathematically accurate one - what you'd get if you cut out a subspace
