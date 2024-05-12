@@ -161,8 +161,8 @@ equations that represent the local version of "curve of minimal
 length". This is going to be a well-established result, but it's fun
 to rederive on your own.
 
-TODO: Writing up the TeX for thie derivation will be a bit tedious, so
-I'm going to come back to it.
+As there's a bunch of equations and it goes on a bit, I've put my
+derivation into [maths.md](./maths.md).
 
 When I replace the naive curvature check with checking that the path
 I'm generating matches these equations, it does look like the path
