@@ -86,7 +86,7 @@ is a much more elegant representation. I'm using the latter, hopefully
 as a stepping stone to deeper understanding, as it's certainly the
 most intuitive way to start.
 
-### Round 0
+### Starting off
 
 Starting off, I ended up putting a lot of effort into just getting
 anything to display in OpenGL, working on both web and native, with an
@@ -130,13 +130,34 @@ this state? Well, my health is making me ultra-low-energy at this
 point. I don't know how much progress I'll make in how long, so I want
 to checkpoint my progress, such as it is. So, here we are.
 
-### Round 1
+### A failure to check the shortest path
+
+The point of a geodesic is that it's the route with the shortest
+length between the two end points. So, if I have an appropriximation
+to that path made with a sequence of points (like I think I do), any
+variation on those points should produce a longer path, right?
+
+In the limit, dealing with the curve rather than a finite set of
+points, this is the calculus of variations, but trying to check
+optimality on a finite set of points will involve a lot less maths.
+
+My idea is to perturb each point in turn along the path, and see if it
+makes the path (locally) longer.
+
+Does this work? No.
+
+I'm approximating the curve with a series of line segments. If I move
+a point perpendicular to the curve, and it's anywhere near optimal, a
+movement of size $\delta$ leads to a change in length of size
+$O(\delta^2)$. The size of the change of curve length is lost in the
+error associated with the piecewise linear approximation to the curve.
+
+Looks like proper maths will be needed after all.
+
+### Next steps
 
 Proposed plan:
 
- * We know that geodesics are the shortest paths on the surface, so
-   write some code that perturbs points and check that the curve grows
-   longer.
  * Write up and explore the integral for length of a curved line on a
    curved 2D surface embedded in 3D, maybe briefly think about how
    this generalises to higher dimensions.

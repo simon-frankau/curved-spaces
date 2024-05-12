@@ -815,10 +815,12 @@ impl Drawable {
     fn repath(&mut self, gl: &Context) {
         {
             let (vertices, indices) = self.repath_aux(self.ray_dir);
+            Self::check_path(&vertices);
             self.paths.rebuild(gl, &vertices, &indices);
         }
         {
             let (vertices, indices) = self.repath_aux(self.ray_dir + 180.0);
+            Self::check_path(&vertices);
             self.paths2.rebuild(gl, &vertices, &indices);
         }
     }
@@ -844,8 +846,9 @@ impl Drawable {
             y += dy;
             z += dz;
 
-	    // See README.md for why we do this.
+            // See README.md for why we do this.
             (x, y, z) = self.nearest_point_to(x, y, z);
+            z = self.z32(x, y);
 
             // TODO: Normalise?
             (dx, dy, dz) = (x - old_x, y - old_y, z - old_z);
@@ -864,6 +867,41 @@ impl Drawable {
         let indices: Vec<u16> = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
 
         (vertices, indices)
+    }
+
+    // Perturb the points on a path, in order to check that it's
+    // minimal.
+    //
+    // Perturbed points should lead to a path length longer than the
+    // geodesic that we found. Unfortunately, this code doesn't really
+    // work very well. See README.md for details.
+    fn check_path(points: &[f32]) {
+        let points = points
+            .chunks_exact(3)
+            .map(|p| (p[0] as f64, p[1] as f64, p[2] as f64))
+            .collect::<Vec<_>>();
+        let dist = |(x1, y1, z1): (f64, f64, f64), (x2, y2, z2): (f64, f64, f64)| {
+            ((x2 - x1).powi(2) + (y2 - y1).powi(2) + (z2 - z1).powi(2)).sqrt()
+        };
+        let score = |p, q, r| dist(p, q) + dist(q, r);
+
+        log::debug!("Path check:");
+        for point in points.windows(3) {
+            let (a, b, c) = (point[0], point[1], point[2]);
+            let base = score(a, b, c);
+
+            const EPS: f64 = 1.0e-4;
+            let mut scores = Vec::new();
+            for (dx, dy, dz) in [(EPS, 0.0, 0.0), (0.0, EPS, 0.0), (0.0, 0.0, EPS)] {
+                for sign in [1.0, -1.0] {
+                    let b2 = (b.0 + dx * sign, b.1 + dy * sign, b.2 + dz * sign);
+                    let score_val = score(a, b2, c) - base;
+                    scores.push(score_val);
+                }
+            }
+            log::debug!("    {:?}", scores);
+            log::info!("{}", scores.iter().fold(f64::INFINITY, |a, &b| a.min(b)));
+        }
     }
 
     fn draw(&mut self, gl: &Context, width: u32, height: u32) {
