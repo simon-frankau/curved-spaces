@@ -815,12 +815,12 @@ impl Drawable {
     fn repath(&mut self, gl: &Context) {
         {
             let (vertices, indices) = self.repath_aux(self.ray_dir);
-            Self::check_path(&vertices);
+            self.check_path(&vertices);
             self.paths.rebuild(gl, &vertices, &indices);
         }
         {
             let (vertices, indices) = self.repath_aux(self.ray_dir + 180.0);
-            Self::check_path(&vertices);
+            self.check_path(&vertices);
             self.paths2.rebuild(gl, &vertices, &indices);
         }
     }
@@ -875,32 +875,47 @@ impl Drawable {
     // Perturbed points should lead to a path length longer than the
     // geodesic that we found. Unfortunately, this code doesn't really
     // work very well. See README.md for details.
-    fn check_path(points: &[f32]) {
+    fn check_path(&self, points: &[f32]) {
+        // Convert flattened array into points.
         let points = points
             .chunks_exact(3)
             .map(|p| (p[0] as f64, p[1] as f64, p[2] as f64))
             .collect::<Vec<_>>();
-        let dist = |(x1, y1, z1): (f64, f64, f64), (x2, y2, z2): (f64, f64, f64)| {
-            ((x2 - x1).powi(2) + (y2 - y1).powi(2) + (z2 - z1).powi(2)).sqrt()
-        };
-        let score = |p, q, r| dist(p, q) + dist(q, r);
 
-        log::debug!("Path check:");
+        // Define some useful helpers.
+        let diff = |(x1, y1, z1): (f64, f64, f64), (x2, y2, z2): (f64, f64, f64)| {
+            (x2 - x1, y2 - y1, z2 - z1)
+        };
+        let len = |(x, y, z): (f64, f64, f64)| (x.powi(2) + y.powi(2) + z.powi(2)).sqrt();
+        let norm = |p: (f64, f64, f64)| {
+            let l = len(p);
+            (p.0 / l, p.1 / l, p.2 / l)
+        };
+
+        log::info!("Path check:");
         for point in points.windows(3) {
             let (a, b, c) = (point[0], point[1], point[2]);
-            let base = score(a, b, c);
+            // First derivatives along path.
+            let diff1 = norm(diff(b, a));
+            let diff2 = norm(diff(c, b));
+            // Second derivative
+            let dd = diff(diff2, diff1);
+            // And derivatives on the surface.
+            const EPSILON: f64 = 1.0e-7;
+            let dzdx = (self.z64(b.0 + EPSILON, b.1) - self.z64(b.0, b.1)) / EPSILON;
+            let dzdy = (self.z64(b.0, b.1 + EPSILON) - self.z64(b.0, b.1)) / EPSILON;
 
-            const EPS: f64 = 1.0e-4;
-            let mut scores = Vec::new();
-            for (dx, dy, dz) in [(EPS, 0.0, 0.0), (0.0, EPS, 0.0), (0.0, 0.0, EPS)] {
-                for sign in [1.0, -1.0] {
-                    let b2 = (b.0 + dx * sign, b.1 + dy * sign, b.2 + dz * sign);
-                    let score_val = score(a, b2, c) - base;
-                    scores.push(score_val);
-                }
-            }
-            log::debug!("    {:?}", scores);
-            log::info!("{}", scores.iter().fold(f64::INFINITY, |a, &b| a.min(b)));
+            // Calculate errors from expected value.
+            let x_err = dd.0 + dzdx * dd.2;
+            let y_err = dd.1 + dzdy * dd.2;
+            let total_curve = len(dd);
+
+            log::info!(
+                "    curve {:.7} x_err {:.7} y_err {:.7}",
+                total_curve,
+                x_err,
+                y_err
+            );
         }
     }
 

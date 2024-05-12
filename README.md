@@ -154,19 +154,32 @@ error associated with the piecewise linear approximation to the curve.
 
 Looks like proper maths will be needed after all.
 
+### Success in checking the shortest path
+
+Following the calculus of variations approach, I've come up with some
+equations that represent the local version of "curve of minimal
+length". This is going to be a well-established result, but it's fun
+to rederive on your own.
+
+TODO: Writing up the TeX for thie derivation will be a bit tedious, so
+I'm going to come back to it.
+
+When I replace the naive curvature check with checking that the path
+I'm generating matches these equations, it does look like the path
+satisfies these equations, and a bad path does not. Success!
+
 ### Next steps
 
 Proposed plan:
 
- * Write up and explore the integral for length of a curved line on a
-   curved 2D surface embedded in 3D, maybe briefly think about how
-   this generalises to higher dimensions.
- * Review Feynman's explanation of calculus of variations, and how
-   that goes from a global integral optimisation to a step-by-step
-   optimisation of tracing a ray. Use this to get a formalised local
-   constraint on the curves we draw.
- * See if I can use that to make a better tracer and/or understand
-   whether my current approach does the right thing.
+ * Write up the curve length integral, and how a local constraint can
+   be generated from this.
+ * Think about using the local constraint to generate the path,
+   instead of "straight line and nearest point".
+ * Think about why these two approaches generate the same result?
+ * Think about how this can be generalised to more complicated
+   surfaces and/or higher dimensions.
+ * UI improvements.
 
 ### And beyond
 
