@@ -172,11 +172,10 @@ satisfies these equations, and a bad path does not. Success!
 
 Proposed plan:
 
- * Write up the curve length integral, and how a local constraint can
-   be generated from this.
  * Think about using the local constraint to generate the path,
    instead of "straight line and nearest point".
- * Think about why these two approaches generate the same result?
+ * Think about using "project in local flat space and adjust to curve"
+   as a variation of the existing approach.
  * Think about how this can be generalised to more complicated
    surfaces and/or higher dimensions.
  * UI improvements.

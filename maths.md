@@ -192,8 +192,49 @@ Put another way, for each direction within the locally-flat region,
 the curvature is zero. All curvature is kind of invisible from the
 "inside", which I guess makes sense?
 
+## Why does "extrapolate and find nearest point" work?
+
+My initial "intuitive" approach to plotting a geodesic on a 2D curved
+surface embedded in $\mathbb{R}^3$ was to extrapolate the line from
+the last 2 points in 3D, and then move the point found to the nearest
+point on the surface.
+
+Moving to the nearest point on the surface moves it along a vector
+perpendicular to the surface, so that the curvature being introduced
+is outside the "locally Euclidean" surface.
+
+## Following the curvature of a height map
+
+The solution we have at the moment works for a general $k$ dimensional
+manifold embedded in $n$ dimensional space. What about the simple
+special case where we have a 2D surface in 3D space, and the Z
+component is simply a (uni-valued) function of X and Y?
+
+Let's work it out!
+
+Let's say $(x, y, z) = E(\overline{x}, \overline{y})$. We'll set $x =
+\overline{x}$ and $y = \overline{y}$. Then taking our constraint above
+and expanding out the summation, we get:
+
+```math
+\begin{array}{ccc}
+x: & \frac{\mathrm{d} x}{\mathrm{d} \overline{x}} \frac{\mathrm{d}^2 x}{\mathrm{d} t^2} + \frac{\mathrm{d} y}{\mathrm{d} \overline{x}} \frac{\mathrm{d}^2 y}{\mathrm{d} t^2} + \frac{\mathrm{d} z}{\mathrm{d} \overline{x}} \frac{\mathrm{d}^2 z}{\mathrm{d} t^2} = 0& \frac{\mathrm{d}^2 x}{\mathrm{d} t^2} +  \frac{\mathrm{d} z}{\mathrm{d} \overline{x}} \frac{\mathrm{d}^2 z}{\mathrm{d} t^2} = 0 \\
+y: & \frac{\mathrm{d} x}{\mathrm{d} \overline{y}} \frac{\mathrm{d}^2 x}{\mathrm{d} t^2} + \frac{\mathrm{d} y}{\mathrm{d} \overline{y}} \frac{\mathrm{d}^2 y}{\mathrm{d} t^2} + \frac{\mathrm{d} z}{\mathrm{d} \overline{y}} \frac{\mathrm{d}^2 z}{\mathrm{d} t^2} = 0& \frac{\mathrm{d}^2 y}{\mathrm{d} t^2} +  \frac{\mathrm{d} z}{\mathrm{d} \overline{y}} \frac{\mathrm{d}^2 z}{\mathrm{d} t^2} = 0
+\end{array}
+```
+
+We can rearrange these as the constraints
+
+```math
+\frac{\mathrm{d}^2 z}{\mathrm{d} t^2} =
+- \frac{\mathrm{d}^2 x}{\mathrm{d} t^2} / \frac{\mathrm{d} z}{\mathrm{d} \overline{x}} =
+- \frac{\mathrm{d}^2 y}{\mathrm{d} t^2} / \frac{\mathrm{d} y}{\mathrm{d} \overline{x}} 
+```
+
+Combined with our earlier constraint that $L' = 1$, this gives us what
+we need to plot a path step-by-step (or check that a path locally is
+minimal).
+
 ## TODOs
 
- * Specialise the equations for 2D manifold in $\mathbb{R}^3$.
- * Relate the solution to my "extrapolate and nearest point" approach.
  * Future work: understand generalised curvature.

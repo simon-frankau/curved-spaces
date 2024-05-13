@@ -869,12 +869,8 @@ impl Drawable {
         (vertices, indices)
     }
 
-    // Perturb the points on a path, in order to check that it's
-    // minimal.
-    //
-    // Perturbed points should lead to a path length longer than the
-    // geodesic that we found. Unfortunately, this code doesn't really
-    // work very well. See README.md for details.
+    // Check that the local constraints for a geodesic are met. See
+    // maths.md for details.
     fn check_path(&self, points: &[f32]) {
         // Convert flattened array into points.
         let points = points
