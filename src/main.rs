@@ -9,7 +9,7 @@ use anyhow::*;
 use glow::{Context, *};
 
 // Size of a step when tracing a ray.
-const RAY_STEP: f32 = 0.01f32;
+const RAY_STEP: f64 = 0.01;
 
 ////////////////////////////////////////////////////////////////////////
 // winit: Shared between wasm32 and glutin_winit.
@@ -583,9 +583,9 @@ struct Drawable {
     y_scale_id: UniformLocation,
     color_id: UniformLocation,
     grid_size: usize,
-    z_scale: f32,
-    ray_start: (f32, f32),
-    ray_dir: f32,
+    z_scale: f64,
+    ray_start: (f64, f64),
+    ray_dir: f64,
     iter: usize,
     func: Function,
 }
@@ -651,9 +651,9 @@ impl Drawable {
                 y_scale_id,
                 color_id,
                 grid_size: 30,
-                z_scale: 0.25f32,
-                ray_start: (0.0f32, -0.9f32),
-                ray_dir: 0.0f32,
+                z_scale: 0.25,
+                ray_start: (0.0, -0.9),
+                ray_dir: 0.0,
                 iter: 1,
                 func: Function::SinXQuad,
             };
@@ -675,20 +675,16 @@ impl Drawable {
                 .add(egui::Slider::new(&mut self.grid_size, 2..=100).text("Grid size"))
                 .changed();
             needs_regrid |= ui
-                .add(egui::Slider::new(&mut self.z_scale, -1.0f32..=1.0f32).text("Z scale"))
+                .add(egui::Slider::new(&mut self.z_scale, -1.0..=1.0).text("Z scale"))
                 .changed();
             needs_repath |= ui
-                .add(
-                    egui::Slider::new(&mut self.ray_start.0, -1.0f32..=1.0f32).text("X ray origin"),
-                )
+                .add(egui::Slider::new(&mut self.ray_start.0, -1.0..=1.0).text("X ray origin"))
                 .changed();
             needs_repath |= ui
-                .add(
-                    egui::Slider::new(&mut self.ray_start.1, -1.0f32..=1.0f32).text("Y ray origin"),
-                )
+                .add(egui::Slider::new(&mut self.ray_start.1, -1.0..=1.0).text("Y ray origin"))
                 .changed();
             needs_repath |= ui
-                .add(egui::Slider::new(&mut self.ray_dir, -180.0f32..=180.0f32).text("Ray angle"))
+                .add(egui::Slider::new(&mut self.ray_dir, -180.0..=180.0).text("Ray angle"))
                 .changed();
             needs_repath |= ui
                 .add(egui::Slider::new(&mut self.iter, 1..=10).text("Iterations"))
@@ -719,30 +715,25 @@ impl Drawable {
         });
     }
 
-    fn z64(&self, x: f64, y: f64) -> f64 {
+    fn z(&self, x: f64, y: f64) -> f64 {
         (match self.func {
             Function::Plane => (x + y) * 0.5,
             Function::PosCurve => -(x * x + y * y) * 0.5,
             Function::NegCurve => (x * x - y * y) * 0.5,
             Function::SinXLin => (y * 4.0 * std::f64::consts::PI).sin() * x,
             Function::SinXQuad => (y * 4.0 * std::f64::consts::PI).sin() * x * x,
-        }) * self.z_scale as f64
-    }
-
-    // TODO: Useful for OpenGL, but probably not worth it.
-    fn z32(&self, x: f32, y: f32) -> f32 {
-        self.z64(x as f64, y as f64) as f32
+        }) * self.z_scale
     }
 
     fn create_grid(&self) -> Vec<f32> {
         let mut v = Vec::new();
         for x in 0..=self.grid_size {
-            let x_coord = (x as f32 / self.grid_size as f32) * 2.0f32 - 1.0f32;
+            let x_coord = (x as f64 / self.grid_size as f64) * 2.0 - 1.0;
             for y in 0..=self.grid_size {
-                let y_coord = (y as f32 / self.grid_size as f32) * 2.0f32 - 1.0f32;
-                v.push(x_coord);
-                v.push(y_coord);
-                v.push(self.z32(x_coord, y_coord));
+                let y_coord = (y as f64 / self.grid_size as f64) * 2.0 - 1.0;
+                v.push(x_coord as f32);
+                v.push(y_coord as f32);
+                v.push(self.z(x_coord, y_coord) as f32);
             }
         }
         v
@@ -774,7 +765,7 @@ impl Drawable {
         self.grid.rebuild(gl, &vertices, &indices);
     }
 
-    fn normal_at(&self, x: f32, y: f32) -> (f32, f32, f32) {
+    fn normal_at(&self, x: f64, y: f64) -> (f64, f64, f64) {
         // dz/dx gives a tangent vector: (1, 0, dz/dx).
         // dz/dy gives a tangent vector: (0, 1, dz/dy).
         // Cross product is normal: (-dz/dx, -dy/dx, 1).
@@ -785,21 +776,19 @@ impl Drawable {
         // We could do this algebraically, but finite difference is
         // easy and general.
 
-        // Use f64s for extra precision here.
-        let (x, y) = (x as f64, y as f64);
-        let z0 = self.z64(x, y);
+        let z0 = self.z(x, y);
         const EPS: f64 = 1.0e-7;
 
-        let dzdx = (self.z64(x + EPS, y) - z0) / EPS;
-        let dzdy = (self.z64(x, y + EPS) - z0) / EPS;
+        let dzdx = (self.z(x + EPS, y) - z0) / EPS;
+        let dzdy = (self.z(x, y + EPS) - z0) / EPS;
 
         let norm = (1.0 + dzdx * dzdx + dzdy * dzdy).powf(-0.5);
 
-        ((-dzdx * norm) as f32, (-dzdy * norm) as f32, norm as f32)
+        ((-dzdx * norm), (-dzdy * norm), norm)
     }
 
-    fn nearest_point_to(&self, x: f32, y: f32, z: f32) -> (f32, f32, f32) {
-        let (mut px, mut py, mut pz) = (x, y, self.z32(x, y));
+    fn nearest_point_to(&self, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+        let (mut px, mut py, mut pz) = (x, y, self.z(x, y));
         for _ in 0..self.iter {
             let (dx, dy, dz) = (x - px, y - py, z - pz);
             let (nx, ny, nz) = self.normal_at(px, py);
@@ -807,7 +796,7 @@ impl Drawable {
 
             px += dx - nx * len;
             py += dy - ny * len;
-            pz = self.z32(px, py)
+            pz = self.z(px, py)
         }
         (px, py, pz)
     }
@@ -825,21 +814,21 @@ impl Drawable {
         }
     }
 
-    fn repath_aux(&mut self, ray_dir: f32) -> (Vec<f32>, Vec<u16>) {
+    fn repath_aux(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u16>) {
         // Generate the vertices.
         let mut vertices: Vec<f32> = Vec::new();
-        let ray_dir_rad = ray_dir * std::f32::consts::PI / 180.0f32;
+        let ray_dir_rad = ray_dir * std::f64::consts::PI / 180.0;
         let mut dx = ray_dir_rad.sin() * RAY_STEP;
         let mut dy = ray_dir_rad.cos() * RAY_STEP;
         let (mut x, mut y) = self.ray_start;
-        let mut z = self.z32(x, y);
+        let mut z = self.z(x, y);
         // Calculate initial dz by taking a step back.
-        let mut dz = z - self.z32(x - dx, y - dy);
+        let mut dz = z - self.z(x - dx, y - dy);
 
-        while x.abs() <= 1.0f32 && y.abs() <= 1.0f32 {
-            vertices.push(x);
-            vertices.push(y);
-            vertices.push(z);
+        while x.abs() <= 1.0 && y.abs() <= 1.0 {
+            vertices.push(x as f32);
+            vertices.push(y as f32);
+            vertices.push(z as f32);
             let (old_x, old_y, old_z) = (x, y, z);
 
             x += dx;
@@ -848,20 +837,20 @@ impl Drawable {
 
             // See README.md for why we do this.
             (x, y, z) = self.nearest_point_to(x, y, z);
-            z = self.z32(x, y);
+            z = self.z(x, y);
 
             // TODO: Normalise?
             (dx, dy, dz) = (x - old_x, y - old_y, z - old_z);
         }
         // Clip last point against grid and add.
-        let x_excess = ((x.abs()) - 1.0f32) / dx.abs();
-        let y_excess = ((y.abs()) - 1.0f32) / dy.abs();
+        let x_excess = ((x.abs()) - 1.0) / dx.abs();
+        let y_excess = ((y.abs()) - 1.0) / dy.abs();
         let fract = x_excess.max(y_excess);
         x -= fract * dx;
         y -= fract * dy;
-        vertices.push(x);
-        vertices.push(y);
-        vertices.push(self.z32(x, y));
+        vertices.push(x as f32);
+        vertices.push(y as f32);
+        vertices.push(self.z(x, y) as f32);
 
         // Generate the indices.
         let indices: Vec<u16> = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
@@ -898,8 +887,8 @@ impl Drawable {
             let dd = diff(diff2, diff1);
             // And derivatives on the surface.
             const EPSILON: f64 = 1.0e-7;
-            let dzdx = (self.z64(b.0 + EPSILON, b.1) - self.z64(b.0, b.1)) / EPSILON;
-            let dzdy = (self.z64(b.0, b.1 + EPSILON) - self.z64(b.0, b.1)) / EPSILON;
+            let dzdx = (self.z(b.0 + EPSILON, b.1) - self.z(b.0, b.1)) / EPSILON;
+            let dzdy = (self.z(b.0, b.1 + EPSILON) - self.z(b.0, b.1)) / EPSILON;
 
             // Calculate errors from expected value.
             let x_err = dd.0 + dzdx * dd.2;
