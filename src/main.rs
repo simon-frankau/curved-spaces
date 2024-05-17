@@ -8,6 +8,10 @@
 use anyhow::*;
 use glow::{Context, *};
 
+mod vec3;
+
+use crate::vec3::*;
+
 // Size of a step when tracing a ray.
 const RAY_STEP: f64 = 0.01;
 
@@ -731,9 +735,12 @@ impl Drawable {
             let x_coord = (x as f64 / self.grid_size as f64) * 2.0 - 1.0;
             for y in 0..=self.grid_size {
                 let y_coord = (y as f64 / self.grid_size as f64) * 2.0 - 1.0;
-                v.push(x_coord as f32);
-                v.push(y_coord as f32);
-                v.push(self.z(x_coord, y_coord) as f32);
+                Vec3 {
+                    x: x_coord,
+                    y: y_coord,
+                    z: self.z(x_coord, y_coord),
+                }
+                .push_to(&mut v);
             }
         }
         v
@@ -765,7 +772,7 @@ impl Drawable {
         self.grid.rebuild(gl, &vertices, &indices);
     }
 
-    fn normal_at(&self, x: f64, y: f64) -> (f64, f64, f64) {
+    fn normal_at(&self, p: &Vec3) -> Vec3 {
         // dz/dx gives a tangent vector: (1, 0, dz/dx).
         // dz/dy gives a tangent vector: (0, 1, dz/dy).
         // Cross product is normal: (-dz/dx, -dy/dx, 1).
@@ -776,29 +783,38 @@ impl Drawable {
         // We could do this algebraically, but finite difference is
         // easy and general.
 
-        let z0 = self.z(x, y);
+        let z0 = self.z(p.x, p.y);
         const EPS: f64 = 1.0e-7;
 
-        let dzdx = (self.z(x + EPS, y) - z0) / EPS;
-        let dzdy = (self.z(x, y + EPS) - z0) / EPS;
+        let dzdx = (self.z(p.x + EPS, p.y) - z0) / EPS;
+        let dzdy = (self.z(p.x, p.y + EPS) - z0) / EPS;
 
         let norm = (1.0 + dzdx * dzdx + dzdy * dzdy).powf(-0.5);
 
-        ((-dzdx * norm), (-dzdy * norm), norm)
+        Vec3 {
+            x: -dzdx * norm,
+            y: -dzdy * norm,
+            z: norm,
+        }
     }
 
-    fn nearest_point_to(&self, x: f64, y: f64, z: f64) -> (f64, f64, f64) {
-        let (mut px, mut py, mut pz) = (x, y, self.z(x, y));
+    fn nearest_point_to(&self, p: &Vec3) -> Vec3 {
+        // Initial guess at solution is the starting point, projected
+        // down onto the surface.
+        let mut sol = Vec3 {
+            z: self.z(p.x, p.y),
+            ..*p
+        };
         for _ in 0..self.iter {
-            let (dx, dy, dz) = (x - px, y - py, z - pz);
-            let (nx, ny, nz) = self.normal_at(px, py);
-            let len = nx * dx + ny * dy + nz * dz;
+            let delta = p.sub(&sol);
+            let normal = self.normal_at(&sol);
+            let len = normal.dot(&delta);
 
-            px += dx - nx * len;
-            py += dy - ny * len;
-            pz = self.z(px, py)
+            let step = delta.sub(&normal.scale(len));
+            sol = sol.add(&step);
+            sol.z = self.z(sol.x, sol.y)
         }
-        (px, py, pz)
+        sol
     }
 
     fn repath(&mut self, gl: &Context) {
@@ -817,40 +833,43 @@ impl Drawable {
     fn repath_aux(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u16>) {
         // Generate the vertices.
         let mut vertices: Vec<f32> = Vec::new();
+
+        let (x0, y0) = self.ray_start;
+        let mut p = Vec3 {
+            x: x0,
+            y: y0,
+            z: self.z(x0, y0),
+        };
+
         let ray_dir_rad = ray_dir * std::f64::consts::PI / 180.0;
-        let mut dx = ray_dir_rad.sin() * RAY_STEP;
-        let mut dy = ray_dir_rad.cos() * RAY_STEP;
-        let (mut x, mut y) = self.ray_start;
-        let mut z = self.z(x, y);
+        let mut delta = Vec3 {
+            x: ray_dir_rad.sin() * RAY_STEP,
+            y: ray_dir_rad.cos() * RAY_STEP,
+            z: 0.0,
+        };
         // Calculate initial dz by taking a step back.
-        let mut dz = z - self.z(x - dx, y - dy);
+        delta.z = p.z - self.z(p.x - delta.x, p.y - delta.y);
 
-        while x.abs() <= 1.0 && y.abs() <= 1.0 {
-            vertices.push(x as f32);
-            vertices.push(y as f32);
-            vertices.push(z as f32);
-            let (old_x, old_y, old_z) = (x, y, z);
+        while p.x.abs() <= 1.0 && p.y.abs() <= 1.0 {
+            p.push_to(&mut vertices);
+            let old_p = p.clone();
 
-            x += dx;
-            y += dy;
-            z += dz;
+            p = p.add(&delta);
 
             // See README.md for why we do this.
-            (x, y, z) = self.nearest_point_to(x, y, z);
-            z = self.z(x, y);
+            p = self.nearest_point_to(&p);
+            p.z = self.z(p.x, p.y);
 
             // TODO: Normalise?
-            (dx, dy, dz) = (x - old_x, y - old_y, z - old_z);
+            delta = p.sub(&old_p);
         }
         // Clip last point against grid and add.
-        let x_excess = ((x.abs()) - 1.0) / dx.abs();
-        let y_excess = ((y.abs()) - 1.0) / dy.abs();
+        let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
+        let y_excess = ((p.y.abs()) - 1.0) / delta.y.abs();
         let fract = x_excess.max(y_excess);
-        x -= fract * dx;
-        y -= fract * dy;
-        vertices.push(x as f32);
-        vertices.push(y as f32);
-        vertices.push(self.z(x, y) as f32);
+        p = p.sub(&delta.scale(fract));
+        p.z = self.z(p.x, p.y);
+        p.push_to(&mut vertices);
 
         // Generate the indices.
         let indices: Vec<u16> = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
