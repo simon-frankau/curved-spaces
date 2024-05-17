@@ -45,4 +45,12 @@ impl Vec3 {
     pub fn dot(&self, rhs: &Vec3) -> f64 {
         self.x * rhs.x + self.y * rhs.y + self.z * rhs.z
     }
+
+    pub fn len(&self) -> f64 {
+        (self.x.powi(2) + self.y.powi(2) + self.z.powi(2)).sqrt()
+    }
+
+    pub fn norm(&self) -> Vec3 {
+        self.scale(self.len().recip())
+    }
 }

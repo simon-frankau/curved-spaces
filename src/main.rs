@@ -883,36 +883,30 @@ impl Drawable {
         // Convert flattened array into points.
         let points = points
             .chunks_exact(3)
-            .map(|p| (p[0] as f64, p[1] as f64, p[2] as f64))
+            .map(|p| Vec3 {
+                x: p[0] as f64,
+                y: p[1] as f64,
+                z: p[2] as f64,
+            })
             .collect::<Vec<_>>();
-
-        // Define some useful helpers.
-        let diff = |(x1, y1, z1): (f64, f64, f64), (x2, y2, z2): (f64, f64, f64)| {
-            (x2 - x1, y2 - y1, z2 - z1)
-        };
-        let len = |(x, y, z): (f64, f64, f64)| (x.powi(2) + y.powi(2) + z.powi(2)).sqrt();
-        let norm = |p: (f64, f64, f64)| {
-            let l = len(p);
-            (p.0 / l, p.1 / l, p.2 / l)
-        };
 
         log::info!("Path check:");
         for point in points.windows(3) {
             let (a, b, c) = (point[0], point[1], point[2]);
             // First derivatives along path.
-            let diff1 = norm(diff(b, a));
-            let diff2 = norm(diff(c, b));
+            let diff1 = b.sub(&a).norm();
+            let diff2 = c.sub(&b).norm();
             // Second derivative
-            let dd = diff(diff2, diff1);
+            let dd = diff2.sub(&diff1);
             // And derivatives on the surface.
             const EPSILON: f64 = 1.0e-7;
-            let dzdx = (self.z(b.0 + EPSILON, b.1) - self.z(b.0, b.1)) / EPSILON;
-            let dzdy = (self.z(b.0, b.1 + EPSILON) - self.z(b.0, b.1)) / EPSILON;
+            let dzdx = (self.z(b.x + EPSILON, b.y) - self.z(b.x, b.y)) / EPSILON;
+            let dzdy = (self.z(b.x, b.y + EPSILON) - self.z(b.x, b.y)) / EPSILON;
 
             // Calculate errors from expected value.
-            let x_err = dd.0 + dzdx * dd.2;
-            let y_err = dd.1 + dzdy * dd.2;
-            let total_curve = len(dd);
+            let x_err = dd.x + dzdx * dd.z;
+            let y_err = dd.y + dzdy * dd.z;
+            let total_curve = dd.len();
 
             log::info!(
                 "    curve {:.7} x_err {:.7} y_err {:.7}",
