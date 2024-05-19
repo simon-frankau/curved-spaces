@@ -140,20 +140,20 @@ simply taking the derivative.
 I've been lead to believe people use "Lagrange multipliers" to handle
 this constraint, but I'll do it my own way:
 
-If the manifold is of dimension $k$, we'll say that locally there's a
-smooth 1-1 mapping $E$ from $\mathbb{R}^k$ to the $\mathbb{R}^n$ that
+If the manifold is of dimension $m$, we'll say that locally there's a
+smooth 1-1 mapping $E$ from $\mathbb{R}^m$ to the $\mathbb{R}^n$ that
 embeds the manifold, representing the points in the manifold, $(x_1,
-\ldots, x_n) = E(\overline{x}_1, \ldots, \overline{x}_k)$. We'll then
-make $(\overline{x}_1, \ldots, \overline{x}_k) = \overline{P}(t)$ into
-a path in the $k$ dimensional space such that $P = E \circ
+\ldots, x_n) = E(\overline{x}_1, \ldots, \overline{x}_m)$. We'll then
+make $(\overline{x}_1, \ldots, \overline{x}_m) = \overline{P}(t)$ into
+a path in the $m$ dimensional space such that $P = E \circ
 \overline{P}$.
 
-Similarly, we can define $\overline{H}$ as the $k$ dimensional
+Similarly, we can define $\overline{H}$ as the $m$ dimensional
 equivalent of $H$. As $H$ is a perturbation of $P$, the transformation
 from $\overline{H}$ to $H$ is a little more complicated:
 
 ```math
-\eta_i = \sum_{j = 1}^k \frac{\textrm{d} x_i}{\textrm{d}
+\eta_i = \sum_{j = 1}^m \frac{\textrm{d} x_i}{\textrm{d}
 \overline{x}_j} \overline{\eta}_j + O(\overline{\eta}_j^2)
 ```
 
@@ -167,13 +167,13 @@ t^2} \ \textrm{d} t
 ```
 
 ```math
-= - \frac{1}{c} \int_{t=0}^1 \sum_{i=1}^n \sum_{j = 1}^k
+= - \frac{1}{c} \int_{t=0}^1 \sum_{i=1}^n \sum_{j = 1}^m
 \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j} \overline{\eta}_j
 \frac{\mathrm{d}^2 x_i}{\mathrm{d} t^2} \ \textrm{d} t
 ```
 
 ```math
-= - \frac{1}{c} \int_{t=0}^1 \sum_{j = 1}^k \overline{\eta}_j
+= - \frac{1}{c} \int_{t=0}^1 \sum_{j = 1}^m \overline{\eta}_j
 \sum_{i=1}^n \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
 \frac{\mathrm{d}^2 x_i}{\mathrm{d} t^2} \ \textrm{d} t
 ```
@@ -205,7 +205,7 @@ is outside the "locally Euclidean" surface.
 
 ## Following the curvature of a height map
 
-The solution we have at the moment works for a general $k$ dimensional
+The solution we have at the moment works for a general $m$ dimensional
 manifold embedded in $n$ dimensional space. What about the simple
 special case where we have a 2D surface in 3D space, and the Z
 component is simply a (uni-valued) function of X and Y?
