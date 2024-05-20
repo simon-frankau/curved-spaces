@@ -235,6 +235,11 @@ Combined with our earlier constraint that $L' = 1$, this gives us what
 we need to plot a path step-by-step (or check that a path locally is
 minimal).
 
-## TODOs
+## Generalising curvature
 
- * Future work: understand generalised curvature.
+So far, we've been working on curved manifolds assuming that there's
+an $\mathbb{R}^n$ embedding space. While it's not necessary for this
+project (my visualiser explicitly shows the embedding space - we never
+try to work without one), the maths of having a curved manifold
+without an embedding space is interesting, so I'm following this up in
+[maths2.md](./maths2.md).

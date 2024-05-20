@@ -168,6 +168,12 @@ When I replace the naive curvature check with checking that the path
 I'm generating matches these equations, it does look like the path
 satisfies these equations, and a bad path does not. Success!
 
+### More maths
+
+I then took a slight detour in [maths2.md](./maths2.md) to explore the
+structure of curved spaces without an embedding $\mathbb{R}^n$ space,
+despite the fact it's not relevant to this coding project!
+
 ### Next steps
 
 Proposed plan:
