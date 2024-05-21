@@ -122,4 +122,148 @@ space.
 
 ## Geodesics
 
-**TODO!**
+Let's try a similar approach for the constraints on a
+geodesic. Assuming our path has $L'(t) = 1$, the constraint in the
+variables of the embedding Euclidean space is
+
+```math
+\forall j . \sum_i \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\frac{\mathrm{d}^2 x_i}{\mathrm{d} t^2} = 0
+```
+
+As before, let's try to eliminate uses of the $\frac{\mathrm{d} x_i}{\mathrm{d} t}$.
+	
+```math
+\sum_i \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\frac{\mathrm{d}}{\mathrm{d} t} \left( \frac{\mathrm{d} x_i}{\mathrm{d} t} \right) = 0
+```
+
+```math
+\sum_i \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\frac{\mathrm{d}}{\mathrm{d} t} \left( \sum_k
+\frac{\mathrm{d} x_i}{\mathrm{d} \overline{x}_k}
+\frac{\mathrm{d} \overline{x}_k}{\mathrm{d} t} \right) = 0
+```
+
+```math
+\sum_i \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\sum_k \frac{\mathrm{d}}{\mathrm{d} t} \left(\frac{\mathrm{d} x_i}{\mathrm{d} \overline{x}_k} \right)
+\frac{\mathrm{d} \overline{x}_k}{\mathrm{d} t} + \frac{\mathrm{d} x_i}{\mathrm{d} \overline{x}_k}
+\frac{\mathrm{d}}{\mathrm{d} t} \left( \frac{\mathrm{d} \overline{x}_k}{\mathrm{d} t} \right) = 0
+```
+
+```math
+\sum_i \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\sum_k \frac{\mathrm{d} \overline{x}_k}{\mathrm{d} t} \frac{\mathrm{d}}{\mathrm{d} \overline{x}_k}
+\left(\frac{\mathrm{d} x_i}{\mathrm{d} \overline{x}_k} \right)
+\frac{\mathrm{d} \overline{x}_k}{\mathrm{d} t} + \frac{\mathrm{d} x_i}{\mathrm{d} \overline{x}_k}
+\frac{\mathrm{d}^2 \overline{x}_k}{\mathrm{d} t^2} = 0
+```
+
+```math
+\sum_i \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\sum_k \frac{\mathrm{d} \overline{x}_k}{\mathrm{d} t}^2
+\frac{\mathrm{d}^2 x_i}{\mathrm{d} \overline{x}_k^2} +
+\frac{\mathrm{d} x_i}{\mathrm{d} \overline{x}_k}
+\frac{\mathrm{d}^2 \overline{x}_k}{\mathrm{d} t^2} = 0
+```
+
+```math
+\sum_{i,k} \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\frac{\mathrm{d} \overline{x}_k}{\mathrm{d} t}^2
+\frac{\mathrm{d}^2 x_i}{\mathrm{d} \overline{x}_k^2} +
+\frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\frac{\mathrm{d} x_i}{\mathrm{d} \overline{x}_k}
+\frac{\mathrm{d}^2 \overline{x}_k}{\mathrm{d} t^2} = 0
+```
+
+```math
+\sum_k \left( \sum_i \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\frac{\mathrm{d}^2 x_i}{\mathrm{d} \overline{x}_k^2} \right)
+\frac{\mathrm{d} \overline{x}_k}{\mathrm{d} t}^2  +
+\left( \sum_i \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\frac{\mathrm{d} x_i}{\mathrm{d} \overline{x}_k} \right)
+\frac{\mathrm{d}^2 \overline{x}_k}{\mathrm{d} t^2} = 0
+```
+
+Switching to summation convention,
+	
+```math
+\gamma_{jk} \frac{\mathrm{d} \overline{x}_k}{\mathrm{d} t}^2  +
+g_{jk} \frac{\mathrm{d}^2 \overline{x}_k}{\mathrm{d} t^2} = 0
+```
+
+where $`g_{jk} = \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\frac{\mathrm{d} x_i}{\mathrm{d} \overline{x}_k}`$as before, and
+$`\gamma_{jk} = \frac{\textrm{d} x_i}{\textrm{d} \overline{x}_j}
+\frac{\mathrm{d}^2 x_i}{\mathrm{d} \overline{x}_k^2}`$.
+
+$\gamma_{jk}$ is another $m$ by $m$ matrix, and it allows us to write
+an equation for the constraint on geodesics without referring to all
+the details of an $`n`$-dimensional embedding space. However, this
+definition still refers back to the embedding space in order to define
+$\gamma$. Could we instead derive it from $g$?
+
+I think we can!
+
+```math
+\gamma_{jk} =
+\left\{ 
+  \begin{array}{ c l }
+    \frac{\textrm{d}}{\textrm{d} \overline{x}_k} g_{jk}     & \quad \textrm{if } j \neq k \\
+    \frac{\textrm{d}}{\textrm{d} \overline{x}_k} g_{jk} / 2 & \quad \textrm{if } j = k
+  \end{array}
+\right.
+```
+
+In other words, starting with $g$, for each column, take the
+derivative of the element with respect to that column's vector, and
+then halve the diagonal entries. This is nice because it means the
+information we care about is embedded in $g$, and we really can just
+throw away all the other structure from the embedding dimensions.
+
+What does it mean to take the derivative of a matrix like this? Well,
+remember that this isn't really a matrix so much sa a function from
+point in space to matrix, and the derivatives are the derivatives of
+the matrix elements as you move through space.
+
+Now that we've derived an equation for the geodesics, we can compare
+it with what's seen in the maths associated with GR. Our equation
+looks like this:
+
+```math
+g_{jk} \frac{\mathrm{d}^2 \overline{x}_k}{\mathrm{d} t^2} +
+\gamma_{jk} \frac{\mathrm{d} \overline{x}_k}{\mathrm{d} t}^2 = 0
+```
+
+The equation from Wikipedia's [entry on
+Geodesics](https://en.wikipedia.org/wiki/Geodesic#Affine_geodesics)
+looks like this after a little relabeling:
+
+```math
+\frac{\mathrm{d}^2 \overline{x}_\lambda}{\mathrm{d} t^2} +
+\Gamma_{\mu\nu}^\lambda
+\frac{\mathrm{d} \overline{x}_\mu}{\mathrm{d} t}
+\frac{\mathrm{d} \overline{x}_\nu}{\mathrm{d} t} = 0
+```
+
+Splitting $k$ into $\mu$ and $\nu$ avoids the need for any suspicious
+component-wise squaring of vectors and fits nicely with summation
+convention. After that, my equation requires applying $g$ to
+$\frac{\mathrm{d}^2 \overline{x}}{\mathrm{d} t^2}$, while the geodesic
+equation builds this into $\Gamma$, which should be possible as $g$ is
+invertible.
+
+(There's some weirdness about making this component-wise zero vs. sum
+of the components being zero, I will skip over that. I don't really
+have the mental effort to dig into that right now!)
+
+In other words, it does rather feel like I've reinvented a limited
+version of [Christoffel
+symbols](https://en.wikipedia.org/wiki/Christoffel_symbols). It's nice
+to have something in the same ballpark, at least.
+
+As I said at the start of all this, I plan to have my code use an
+explicit embedding in Euclidean space to describe the curved
+manifolds, since it's nice and easy, so this is all a bit hypothetical
+for me, but it's been fun!
