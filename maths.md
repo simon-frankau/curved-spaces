@@ -145,10 +145,10 @@ smooth 1-1 mapping $E$ from $\mathbb{R}^m$ to the $\mathbb{R}^n$ that
 embeds the manifold, representing the points in the manifold, $(x_1,
 \ldots, x_n) = E(\overline{x}_1, \ldots, \overline{x}_m)$. We'll then
 make $(\overline{x}_1, \ldots, \overline{x}_m) = \overline{P}(t)$ into
-a path in the $m$ dimensional space such that $P = E \circ
+a path in the $`m`$-dimensional space such that $P = E \circ
 \overline{P}$.
 
-Similarly, we can define $\overline{H}$ as the $m$ dimensional
+Similarly, we can define $\overline{H}$ as the $`m`$-dimensional
 equivalent of $H$. As $H$ is a perturbation of $P$, the transformation
 from $\overline{H}$ to $H$ is a little more complicated:
 
@@ -205,10 +205,10 @@ is outside the "locally Euclidean" surface.
 
 ## Following the curvature of a height map
 
-The solution we have at the moment works for a general $m$ dimensional
-manifold embedded in $n$ dimensional space. What about the simple
-special case where we have a 2D surface in 3D space, and the Z
-component is simply a (uni-valued) function of X and Y?
+The solution we have at the moment works for a general
+$`m`$-dimensional manifold embedded in $n$ dimensional space. What
+about the simple special case where we have a 2D surface in 3D space,
+and the Z component is simply a (uni-valued) function of X and Y?
 
 Let's work it out!
 
