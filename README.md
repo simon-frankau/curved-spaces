@@ -172,7 +172,9 @@ satisfies these equations, and a bad path does not. Success!
 
 I then took a slight detour in [maths2.md](./maths2.md) to explore the
 structure of curved spaces without an embedding $\mathbb{R}^n$ space,
-despite the fact it's not relevant to this coding project!
+despite the fact it's not relevant to this coding project! This is
+kind of a half-assed reinvention of the kind of maths used in General
+Relativity.
 
 ### Next steps
 
@@ -180,8 +182,6 @@ Proposed plan:
 
  * Think about using the local constraint to generate the path,
    instead of "straight line and nearest point".
- * Think about using "project in local flat space and adjust to curve"
-   as a variation of the existing approach.
  * Think about how this can be generalised to more complicated
    surfaces and/or higher dimensions.
  * UI improvements.
@@ -192,9 +192,6 @@ End goals are:
 
   * To be able to trace rays through a "wormhole" surface that can
     then be generalised into a curved space raytracer in 3D.
-  * To understand how to describe the curvature of space at a
-    particular point, independent of an embedding space. I think I'm
-    trying to reinvent the curvature tensor used in GR.
 
 ## Design choices on the coding side
 
