@@ -228,12 +228,12 @@ We can rearrange these as the constraints
 ```math
 \frac{\mathrm{d}^2 z}{\mathrm{d} t^2} =
 - \frac{\mathrm{d}^2 x}{\mathrm{d} t^2} / \frac{\mathrm{d} z}{\mathrm{d} \overline{x}} =
-- \frac{\mathrm{d}^2 y}{\mathrm{d} t^2} / \frac{\mathrm{d} y}{\mathrm{d} \overline{x}} 
+- \frac{\mathrm{d}^2 y}{\mathrm{d} t^2} / \frac{\mathrm{d} z}{\mathrm{d} \overline{y}}
 ```
 
-Combined with our earlier constraint that $L' = 1$, this gives us what
-we need to plot a path step-by-step (or check that a path locally is
-minimal).
+Combined with our other constraint that the resulting point must lie
+inside the embedded space, this gives us what we need to plot a path
+step-by-step (or check that a path locally is minimal).
 
 ## Generalising curvature
 

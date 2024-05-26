@@ -110,6 +110,21 @@ impl Function {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Algorithm {
+    ExtrapNearest,
+    DiffEqn,
+}
+
+impl Algorithm {
+    fn label(&self) -> &'static str {
+        match self {
+            Algorithm::ExtrapNearest => "Extrapolate & Nearest",
+            Algorithm::DiffEqn => "Differential Equation",
+        }
+    }
+}
+
 pub struct Tracer {
     pub grid: Shape,
     pub paths: Shape,
@@ -120,6 +135,7 @@ pub struct Tracer {
     ray_dir: f64,
     iter: usize,
     func: Function,
+    algo: Algorithm,
 }
 
 impl Tracer {
@@ -134,6 +150,7 @@ impl Tracer {
             ray_dir: 0.0,
             iter: 1,
             func: Function::SinXQuad,
+            algo: Algorithm::ExtrapNearest,
         }
     }
 
@@ -172,6 +189,17 @@ impl Tracer {
                 .map(|x| ui.selectable_value(&mut self.func, *x, x.label()).changed())
                 // Force evaluation of whole list.
                 .fold(false, |a, b| a || b)
+            })
+            .inner
+            .unwrap_or(false);
+        needs_repath |= egui::ComboBox::from_label("Algorithm")
+            .selected_text(self.algo.label())
+            .show_ui(ui, |ui| {
+                [Algorithm::ExtrapNearest, Algorithm::DiffEqn]
+                    .iter()
+                    .map(|x| ui.selectable_value(&mut self.algo, *x, x.label()).changed())
+                    // Force evaluation of whole list.
+                    .fold(false, |a, b| a || b)
             })
             .inner
             .unwrap_or(false);
@@ -287,6 +315,35 @@ impl Tracer {
         sol
     }
 
+    fn solve_diff_eqn(&self, p: &Vec3, delta: &Vec3) -> Vec3 {
+        let z0 = self.z(p.x, p.y);
+        const EPS: f64 = 1.0e-7;
+
+        let dzdx = (self.z(p.x + EPS, p.y) - z0) / EPS;
+        let dzdy = (self.z(p.x, p.y + EPS) - z0) / EPS;
+
+        // Generate the vector representing the second derivative.
+        //
+        // Huh. This looks suspiciously similar to calculations we do
+        // in `normal_at`, which makes sense, having the curvature
+        // vector being the normal vector.
+        let d2 = Vec3 {
+            x: -dzdx,
+            y: -dzdy,
+            z: 1.0,
+        };
+
+        // TODO: Doesn't always converge, probably because it's not
+        // real Newton-Raphson. Fun.
+        let mut new_p = p.add(&delta);
+        for _ in 0..self.iter {
+            let diff = self.z(new_p.x, new_p.y) - new_p.z;
+            let d2_scaled = d2.scale(diff);
+            new_p = new_p.add(&d2_scaled);
+        }
+        new_p
+    }
+
     pub fn repath(&mut self, gl: &Context) {
         {
             let (vertices, indices) = self.repath_aux(self.ray_dir);
@@ -324,11 +381,22 @@ impl Tracer {
             p.push_to(&mut vertices);
             let old_p = p.clone();
 
-            p = p.add(&delta);
+            match self.algo {
+                // Linear extrapolation in the embedding space, and
+                // then find the nearest point on the embedded space.
+                Algorithm::ExtrapNearest => {
+                    p = p.add(&delta);
 
-            // See README.md for why we do this.
-            p = self.nearest_point_to(&p);
-            p.z = self.z(p.x, p.y);
+                    // See README.md for why we do this.
+                    p = self.nearest_point_to(&p);
+                    p.z = self.z(p.x, p.y);
+                }
+                // Follow the differential equation constraints for
+                // the geodesic (see maths.md).
+                Algorithm::DiffEqn => {
+                    p = self.solve_diff_eqn(&p, &delta);
+                }
+            }
 
             // TODO: Normalise?
             delta = p.sub(&old_p);
