@@ -1,7 +1,11 @@
 //
-// Code to draw the grid for, and trace paths over, an explicit
-// representation of a 2D surface in 3D. That is, surfaces of the form
-// z = f(x, y). It's simple, but prevents surfaces that double back.
+// Code to draw the grid for, and trace paths over, 2D surfaces
+// embedded in 3D.
+//
+// The explicit tracer uses surfaces of the form z = f(x, y). It's
+// simple, but prevents surfaces that double back.
+//
+// The implicit tracer uses surfaces of the form f(x, y, z) = 0.
 //
 
 use glow::{Context, *};

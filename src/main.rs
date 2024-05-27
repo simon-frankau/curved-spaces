@@ -8,10 +8,10 @@
 use anyhow::*;
 use glow::{Context, *};
 
-mod explicit;
+mod tracer;
 mod vec3;
 
-use crate::explicit::*;
+use crate::tracer::*;
 
 ////////////////////////////////////////////////////////////////////////
 // winit: Shared between wasm32 and glutin_winit.
