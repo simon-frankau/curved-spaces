@@ -337,8 +337,14 @@ impl Tracer {
         // real Newton-Raphson. Fun.
         let mut new_p = p.add(&delta);
         for _ in 0..self.iter {
+            // Distance from target.
             let diff = self.z(new_p.x, new_p.y) - new_p.z;
-            let d2_scaled = d2.scale(diff);
+            // Derivative of distance wrt d2.
+            let new_p2 = new_p.add(&d2.scale(1.0));
+            let diff2 = self.z(new_p2.x, new_p2.y) - new_p2.z;
+            let deriv = (diff - diff2) / 1.0;
+            log::info!("Deriv: {}", deriv);
+            let d2_scaled = d2.scale(diff / deriv);
             new_p = new_p.add(&d2_scaled);
         }
         new_p
@@ -389,7 +395,6 @@ impl Tracer {
 
                     // See README.md for why we do this.
                     p = self.nearest_point_to(&p);
-                    p.z = self.z(p.x, p.y);
                 }
                 // Follow the differential equation constraints for
                 // the geodesic (see maths.md).
@@ -398,8 +403,11 @@ impl Tracer {
                 }
             }
 
-            // TODO: Normalise?
-            delta = p.sub(&old_p);
+            // Always keep the point in the surface, even if the
+            // algorithm should manage that! Helps stability.
+            p.z = self.z(p.x, p.y);
+            // And ensure the step size is uniform.
+            delta = p.sub(&old_p).norm().scale(RAY_STEP);
         }
         // Clip last point against grid and add.
         let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
