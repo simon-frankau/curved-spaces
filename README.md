@@ -176,14 +176,39 @@ despite the fact it's not relevant to this coding project! This is
 kind of a half-assed reinvention of the kind of maths used in General
 Relativity.
 
+### Following the geodesic equation
+
+I then added code that attempts to follow the geodesic equation on the
+explicit ( $z = f(x, y)$ ) formulation of the surface. Writing the
+code, it's clear how similar it is to
+extrapolate-and-find-nearest-point-in surface code that's already
+implemented. In both cases, we take a linear extrapolation in the
+embedding space, and then move the new point in the direction normal
+to the surface until it hits the surface.
+
+In the previous approach, the point was moved in a direction normal to
+where the point is moved to. In this approach, the point is moved in
+the direction normal to the point we extrapolated from.
+
+In low curvature cases, both algorithms produce the same curve. In
+high curvature, the change of normal within a step seems to be enough
+to allow the curves to diverge. Or maybe there's a bug!
+
+In either case, if the points aren't forced to be in the surface the
+curves can become unstable and diverge from the surface. Forcing
+points into the surface feels like a hacky mess, but seems necessary
+unless I fix up my numerical methods.
+
+Next, I plan to use an implicit representation for the surface, rather
+than explicit. This will allow surfaces with overhangs. I will try to
+get the numerical behaviour to work better in this domain, rather than
+put much more effort into the explicit representation.
+
 ### Next steps
 
 Proposed plan:
 
- * Think about using the local constraint to generate the path,
-   instead of "straight line and nearest point".
- * Think about how this can be generalised to more complicated
-   surfaces and/or higher dimensions.
+ * Handle implicit representation.
  * UI improvements.
 
 ### And beyond
