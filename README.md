@@ -204,6 +204,15 @@ than explicit. This will allow surfaces with overhangs. I will try to
 get the numerical behaviour to work better in this domain, rather than
 put much more effort into the explicit representation.
 
+### Implicit surfaces
+
+The next step was to support implicit surfaces, which would allow us
+to create surfaces that curve 180 degrees, etc. It turns out that this
+was easier to implement than expected, since it's uniform in all
+dimensions, rather than having to special-case the Z direction.
+
+TODO: Creating the grid.
+
 ### Next steps
 
 Proposed plan:

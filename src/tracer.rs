@@ -15,6 +15,11 @@ use crate::vec3::*;
 // Size of a step when tracing a ray.
 const RAY_STEP: f64 = 0.01;
 
+////////////////////////////////////////////////////////////////////////
+// Shape: Representation of something to be drawn in OpenGL with a
+// single `draw_elements` call.
+//
+
 pub struct Shape {
     vao: VertexArray,
     vbo: Buffer,
@@ -22,7 +27,6 @@ pub struct Shape {
     num_elts: i32,
 }
 
-// TODO: Probably shouldn't be in this module.
 impl Shape {
     // Create vertex and index buffers, and vertex array to describe vertex buffer.
     fn new(gl: &Context) -> Shape {
@@ -93,6 +97,9 @@ impl Shape {
     }
 }
 
+////////////////////////////////////////////////////////////////////////
+// Path tracer code shared by explicit and implicit tracers.
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Function {
     Plane,
@@ -116,15 +123,17 @@ impl Function {
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Algorithm {
-    ExtrapNearest,
-    DiffEqn,
+    ExpExtrapNearest,
+    ExpDiffEqn,
+    ImpDiffEqn,
 }
 
 impl Algorithm {
     fn label(&self) -> &'static str {
         match self {
-            Algorithm::ExtrapNearest => "Extrapolate & Nearest",
-            Algorithm::DiffEqn => "Differential Equation",
+            Algorithm::ExpExtrapNearest => "Explicit Extrapolate & Nearest",
+            Algorithm::ExpDiffEqn => "Explicit Differential Equation",
+            Algorithm::ImpDiffEqn => "Implicit Differential Equation",
         }
     }
 }
@@ -154,7 +163,7 @@ impl Tracer {
             ray_dir: 0.0,
             iter: 1,
             func: Function::SinXQuad,
-            algo: Algorithm::ExtrapNearest,
+            algo: Algorithm::ImpDiffEqn,
         }
     }
 
@@ -199,11 +208,15 @@ impl Tracer {
         needs_repath |= egui::ComboBox::from_label("Algorithm")
             .selected_text(self.algo.label())
             .show_ui(ui, |ui| {
-                [Algorithm::ExtrapNearest, Algorithm::DiffEqn]
-                    .iter()
-                    .map(|x| ui.selectable_value(&mut self.algo, *x, x.label()).changed())
-                    // Force evaluation of whole list.
-                    .fold(false, |a, b| a || b)
+                [
+                    Algorithm::ExpExtrapNearest,
+                    Algorithm::ExpDiffEqn,
+                    Algorithm::ImpDiffEqn,
+                ]
+                .iter()
+                .map(|x| ui.selectable_value(&mut self.algo, *x, x.label()).changed())
+                // Force evaluation of whole list.
+                .fold(false, |a, b| a || b)
             })
             .inner
             .unwrap_or(false);
@@ -215,12 +228,51 @@ impl Tracer {
         }
     }
 
+    // Regenerate the grid used by OpenGL.
+    pub fn regrid(&mut self, gl: &Context) {
+        // TODO: Should have a version of regrid-ing for the implicit surface.
+        let vertices = self.create_grid();
+        let indices = self.create_grid_indices();
+        self.grid.rebuild(gl, &vertices, &indices);
+    }
+
+    pub fn repath(&mut self, gl: &Context) {
+        {
+            let (vertices, indices) = if self.algo == Algorithm::ImpDiffEqn {
+                self.repath_imp(self.ray_dir)
+            } else {
+                self.repath_exp(self.ray_dir)
+            };
+            self.check_path(&vertices);
+            self.paths.rebuild(gl, &vertices, &indices);
+        }
+        {
+            let (vertices, indices) = if self.algo == Algorithm::ImpDiffEqn {
+                self.repath_imp(self.ray_dir + 180.0)
+            } else {
+                self.repath_exp(self.ray_dir + 180.0)
+            };
+            self.check_path(&vertices);
+            self.paths2.rebuild(gl, &vertices, &indices);
+        }
+    }
+
     pub fn close(&self, gl: &Context) {
         self.grid.close(gl);
         self.paths.close(gl);
         self.paths2.close(gl);
     }
+}
 
+////////////////////////////////////////////////////////////////////////
+// Explicit tracer code.
+
+// The implicit form is more general, and the way forward, but I'm
+// leaving this code around to demonstrate how my initial passes
+// worked.
+
+impl Tracer {
+    // Explicit form equations.
     fn z(&self, x: f64, y: f64) -> f64 {
         (match self.func {
             Function::Plane => (x + y) * 0.5,
@@ -265,13 +317,6 @@ impl Tracer {
             }
         }
         v
-    }
-
-    // Regenerate the grid used by OpenGL.
-    pub fn regrid(&mut self, gl: &Context) {
-        let vertices = self.create_grid();
-        let indices = self.create_grid_indices();
-        self.grid.rebuild(gl, &vertices, &indices);
     }
 
     fn normal_at(&self, p: &Vec3) -> Vec3 {
@@ -337,8 +382,6 @@ impl Tracer {
             z: 1.0,
         };
 
-        // TODO: Doesn't always converge, probably because it's not
-        // real Newton-Raphson. Fun.
         let mut new_p = p.add(&delta);
         for _ in 0..self.iter {
             // Distance from target.
@@ -354,20 +397,7 @@ impl Tracer {
         new_p
     }
 
-    pub fn repath(&mut self, gl: &Context) {
-        {
-            let (vertices, indices) = self.repath_aux(self.ray_dir);
-            self.check_path(&vertices);
-            self.paths.rebuild(gl, &vertices, &indices);
-        }
-        {
-            let (vertices, indices) = self.repath_aux(self.ray_dir + 180.0);
-            self.check_path(&vertices);
-            self.paths2.rebuild(gl, &vertices, &indices);
-        }
-    }
-
-    fn repath_aux(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u16>) {
+    fn repath_exp(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u16>) {
         // Generate the vertices.
         let mut vertices: Vec<f32> = Vec::new();
 
@@ -394,7 +424,7 @@ impl Tracer {
             match self.algo {
                 // Linear extrapolation in the embedding space, and
                 // then find the nearest point on the embedded space.
-                Algorithm::ExtrapNearest => {
+                Algorithm::ExpExtrapNearest => {
                     p = p.add(&delta);
 
                     // See README.md for why we do this.
@@ -402,9 +432,10 @@ impl Tracer {
                 }
                 // Follow the differential equation constraints for
                 // the geodesic (see maths.md).
-                Algorithm::DiffEqn => {
+                Algorithm::ExpDiffEqn => {
                     p = self.solve_diff_eqn(&p, &delta);
                 }
+                Algorithm::ImpDiffEqn => panic!("Shouldn't happen"),
             }
 
             // Always keep the point in the surface, even if the
@@ -465,5 +496,122 @@ impl Tracer {
                 y_err
             );
         }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////
+// Trace paths on an implicit representation
+
+impl Tracer {
+    // Not a true distance, but the implicit surface function, where
+    // the surface is all points where dist == 0.
+    fn dist(&self, point: &Vec3) -> f64 {
+        // TODO: Provide some real implicit surfaces
+        self.z(point.x, point.y) - point.z
+    }
+
+    fn intersect_line(&self, point: &Vec3, direction: &Vec3) -> Vec3 {
+        // Newton-Raphson solver on dist(point + lambda direction)
+        const EPSILON: f64 = 1.0e-7;
+        // In practice, it's locally flat enough that a a single
+        // iteration seems to suffice.
+        const MAX_ITER: usize = 10;
+
+        let mut lambda = 0.0;
+        for i in 0..MAX_ITER {
+            let guess = point.add(&direction.scale(lambda));
+            let guess_val = self.dist(&guess);
+            if guess_val.abs() < EPSILON {
+                log::info!("Solved in {} iterations", i);
+                return guess;
+            }
+
+            let guess2 = point.add(&direction.scale(lambda + EPSILON));
+            let guess2_val = self.dist(&guess2);
+
+            let dguess_val = (guess2_val - guess_val) / EPSILON;
+
+            lambda -= guess_val / dguess_val;
+        }
+
+        log::error!("intersect_line failed to converge");
+        // Could fall back to binary chop, but as it generally seems
+        // to converge in <= 2 iterations, this seems excessive.
+        point.add(&direction.scale(lambda))
+    }
+
+    // Intersect the surface with a line in the z-axis from the
+    // point. Roughly like the "z" function, except it should find the
+    // nearest intersection.
+    fn project_vertical(&self, point: &Vec3) -> Vec3 {
+        const VERTICAL: Vec3 = Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0,
+        };
+        self.intersect_line(point, &VERTICAL)
+    }
+
+    fn repath_imp(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u16>) {
+        const EPSILON: f64 = 1.0e-7;
+
+        // Generate the vertices.
+        let mut vertices: Vec<f32> = Vec::new();
+
+        let (x0, y0) = self.ray_start;
+        let mut p = self.project_vertical(&Vec3 {
+            x: x0,
+            y: y0,
+            z: 1.0,
+        });
+
+        let ray_dir_rad = ray_dir * std::f64::consts::PI / 180.0;
+        let mut delta = Vec3 {
+            x: ray_dir_rad.sin() * RAY_STEP,
+            y: ray_dir_rad.cos() * RAY_STEP,
+            z: 0.0,
+        };
+
+        // Take a step back, roughly, for initial previous point.
+        let mut old_p = self.project_vertical(&p.sub(&delta));
+
+        while p.x.abs() <= 1.0 && p.y.abs() <= 1.0 {
+            p.push_to(&mut vertices);
+
+            let delta = p.sub(&old_p).norm().scale(RAY_STEP);
+
+            let base_dist = self.dist(&p);
+            let norm = Vec3 {
+                x: self.dist(&Vec3 {
+                    x: p.x + EPSILON,
+                    ..p
+                }) - base_dist,
+                y: self.dist(&Vec3 {
+                    y: p.y + EPSILON,
+                    ..p
+                }) - base_dist,
+                z: self.dist(&Vec3 {
+                    z: p.z + EPSILON,
+                    ..p
+                }) - base_dist,
+            }
+            .norm();
+
+            let new_p = self.intersect_line(&p.add(&delta), &norm);
+
+            (p, old_p) = (new_p, p);
+        }
+        // Clip last point against grid and add.
+        let delta = p.sub(&old_p);
+        let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
+        let y_excess = ((p.y.abs()) - 1.0) / delta.y.abs();
+        let fract = x_excess.max(y_excess);
+        p = self.project_vertical(&p.sub(&delta.scale(fract)));
+        p.push_to(&mut vertices);
+
+        // Generate the indices.
+        let indices: Vec<u16> = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
+
+        (vertices, indices)
     }
 }
