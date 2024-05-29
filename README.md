@@ -211,7 +211,10 @@ to create surfaces that curve 180 degrees, etc. It turns out that this
 was easier to implement than expected, since it's uniform in all
 dimensions, rather than having to special-case the Z direction.
 
-TODO: Creating the grid.
+The grids are created by tracing along lines of constant X and Y from
+the edge of the grid (by constraining the curvature as the lines are
+traced out). If the line curves around on one side and doubles back,
+this can lead to a gap which needs to be addressed by other means.
 
 ### Next steps
 

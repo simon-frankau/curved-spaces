@@ -230,9 +230,11 @@ impl Tracer {
 
     // Regenerate the grid used by OpenGL.
     pub fn regrid(&mut self, gl: &Context) {
-        // TODO: Should have a version of regrid-ing for the implicit surface.
-        let vertices = self.create_grid();
-        let indices = self.create_grid_indices();
+        let (vertices, indices) = if self.algo == Algorithm::ImpDiffEqn {
+            self.create_grid_imp()
+        } else {
+            (self.create_grid_exp(), self.create_grid_exp_indices())
+        };
         self.grid.rebuild(gl, &vertices, &indices);
     }
 
@@ -283,7 +285,7 @@ impl Tracer {
         }) * self.z_scale
     }
 
-    fn create_grid(&self) -> Vec<f32> {
+    fn create_grid_exp(&self) -> Vec<f32> {
         let mut v = Vec::new();
         for x in 0..=self.grid_size {
             let x_coord = (x as f64 / self.grid_size as f64) * 2.0 - 1.0;
@@ -300,7 +302,7 @@ impl Tracer {
         v
     }
 
-    fn create_grid_indices(&self) -> Vec<u16> {
+    fn create_grid_exp_indices(&self) -> Vec<u16> {
         let mut v = Vec::new();
         for x in 0..=self.grid_size as u16 {
             let x_idx = x * (self.grid_size as u16 + 1);
@@ -390,7 +392,6 @@ impl Tracer {
             let new_p2 = new_p.add(&d2.scale(1.0));
             let diff2 = self.z(new_p2.x, new_p2.y) - new_p2.z;
             let deriv = (diff - diff2) / 1.0;
-            log::info!("Deriv: {}", deriv);
             let d2_scaled = d2.scale(diff / deriv);
             new_p = new_p.add(&d2_scaled);
         }
@@ -522,7 +523,6 @@ impl Tracer {
             let guess = point.add(&direction.scale(lambda));
             let guess_val = self.dist(&guess);
             if guess_val.abs() < EPSILON {
-                log::info!("Solved in {} iterations", i);
                 return guess;
             }
 
@@ -552,9 +552,65 @@ impl Tracer {
         self.intersect_line(point, &VERTICAL)
     }
 
-    fn repath_imp(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u16>) {
+    fn plot_path(
+        &self,
+        point: &Vec3,
+        prev: &Vec3,
+        vertices: &mut Vec<f32>,
+        constraint: Option<&Vec3>,
+    ) {
         const EPSILON: f64 = 1.0e-7;
 
+        let mut p = point.clone();
+        let mut old_p = prev.clone();
+
+        while p.x.abs() <= 1.0 && p.y.abs() <= 1.0 {
+            p.push_to(vertices);
+
+            let delta = p.sub(&old_p).norm().scale(RAY_STEP);
+
+            let base_dist = self.dist(&p);
+            let mut norm = Vec3 {
+                x: self.dist(&Vec3 {
+                    x: p.x + EPSILON,
+                    ..p
+                }) - base_dist,
+                y: self.dist(&Vec3 {
+                    y: p.y + EPSILON,
+                    ..p
+                }) - base_dist,
+                z: self.dist(&Vec3 {
+                    z: p.z + EPSILON,
+                    ..p
+                }) - base_dist,
+            };
+
+            if let Some(constr) = constraint {
+                // Constrain the curvature to lie in the given plane.
+                // "constraint" should be pre-normalised.
+                assert!((constr.dot(constr) - 1.0).abs() <= EPSILON);
+
+                let projection_len = norm.dot(constr);
+                let projection_vec = constr.scale(projection_len);
+                norm = norm.sub(&projection_vec)
+            }
+
+            norm = norm.norm();
+
+            let new_p = self.intersect_line(&p.add(&delta), &norm);
+
+            (p, old_p) = (new_p, p);
+        }
+        // Clip last point against grid and add.
+        let delta = p.sub(&old_p);
+        let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
+        let y_excess = ((p.y.abs()) - 1.0) / delta.y.abs();
+        let fract = x_excess.max(y_excess);
+        p = self.project_vertical(&p.sub(&delta.scale(fract)));
+        p.push_to(vertices);
+    }
+
+    fn repath_imp(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u16>) {
         // Generate the vertices.
         let mut vertices: Vec<f32> = Vec::new();
 
@@ -575,43 +631,62 @@ impl Tracer {
         // Take a step back, roughly, for initial previous point.
         let mut old_p = self.project_vertical(&p.sub(&delta));
 
-        while p.x.abs() <= 1.0 && p.y.abs() <= 1.0 {
-            p.push_to(&mut vertices);
-
-            let delta = p.sub(&old_p).norm().scale(RAY_STEP);
-
-            let base_dist = self.dist(&p);
-            let norm = Vec3 {
-                x: self.dist(&Vec3 {
-                    x: p.x + EPSILON,
-                    ..p
-                }) - base_dist,
-                y: self.dist(&Vec3 {
-                    y: p.y + EPSILON,
-                    ..p
-                }) - base_dist,
-                z: self.dist(&Vec3 {
-                    z: p.z + EPSILON,
-                    ..p
-                }) - base_dist,
-            }
-            .norm();
-
-            let new_p = self.intersect_line(&p.add(&delta), &norm);
-
-            (p, old_p) = (new_p, p);
-        }
-        // Clip last point against grid and add.
-        let delta = p.sub(&old_p);
-        let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
-        let y_excess = ((p.y.abs()) - 1.0) / delta.y.abs();
-        let fract = x_excess.max(y_excess);
-        p = self.project_vertical(&p.sub(&delta.scale(fract)));
-        p.push_to(&mut vertices);
+        self.plot_path(&p, &old_p, &mut vertices, None);
 
         // Generate the indices.
-        let indices: Vec<u16> = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
+        let indices = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
 
         (vertices, indices)
+    }
+
+    fn create_grid_imp(&self) -> (Vec<f32>, Vec<u16>) {
+        let mut v = Vec::new(); // Vertices
+        let mut i = Vec::new(); // Indices
+
+        let mut build = |constraint: &Vec3| {
+            let x_scale = constraint.x;
+            let y_scale = constraint.y;
+            for idx in 0..=self.grid_size {
+                let coord = (idx as f64 / self.grid_size as f64) * 2.0;
+                let p = Vec3 {
+                    x: coord * x_scale - 1.0,
+                    y: coord * y_scale - 1.0,
+                    z: 1.0,
+                };
+                let p_prev = Vec3 {
+                    x: coord * x_scale - 1.0 - (1.0 - x_scale) * RAY_STEP,
+                    y: coord * y_scale - 1.0 - (1.0 - y_scale) * RAY_STEP,
+                    z: 1.0,
+                };
+
+                let old_len = v.len() / 3;
+                // Build vertices.
+                self.plot_path(
+                    &self.project_vertical(&p),
+                    &self.project_vertical(&p_prev),
+                    &mut v,
+                    Some(&constraint),
+                );
+                // And indices.
+                let len = v.len() / 3;
+                for idx in old_len..len - 2 {
+                    i.push(idx as u16);
+                    i.push(idx as u16 + 1);
+                }
+            }
+        };
+
+        build(&Vec3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        });
+        build(&Vec3 {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+        });
+
+        (v, i)
     }
 }
