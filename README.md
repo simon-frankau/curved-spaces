@@ -98,6 +98,10 @@ I've been having ideas about how to generalise this to... more general
 spaces. I have ideas, but I'm not clear yet. Do I want to use an atlas
 of flattish pieces, or maybe an implicit surface?
 
+**Note that my first cut of tracing an explicit representation has
+been removed from `main`. If you want to see this phase of
+development, look at the branch `explicit_and_implicit_surfaces`.**
+
 Then, there's my approach for tracing a "geodesic" on the
 surface. Scare quotes because I'm making this up as I go along, and
 have no real mathematical basis so far.
@@ -215,6 +219,11 @@ The grids are created by tracing along lines of constant X and Y from
 the edge of the grid (by constraining the curvature as the lines are
 traced out). If the line curves around on one side and doubles back,
 this can lead to a gap which needs to be addressed by other means.
+
+At this point, I decided to remove support for explicit surfaces,
+which simply represent development history, in order to simplify the
+code. The point before explicit surfaces are removed is represented by
+the branch `explicit_and_implicit_surfaces`.
 
 ### Next steps
 
