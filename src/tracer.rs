@@ -103,6 +103,7 @@ pub enum Function {
     NegCurve,
     SinXLin,
     SinXQuad,
+    Hole,
 }
 
 impl Function {
@@ -113,6 +114,7 @@ impl Function {
             Function::NegCurve => "Negative curvature",
             Function::SinXLin => "Sin x Linear",
             Function::SinXQuad => "Sin x Quad",
+            Function::Hole => "Wormhole",
         }
     }
 }
@@ -174,6 +176,7 @@ impl Tracer {
                     Function::NegCurve,
                     Function::SinXLin,
                     Function::SinXQuad,
+                    Function::Hole,
                 ]
                 .iter()
                 .map(|x| ui.selectable_value(&mut self.func, *x, x.label()).changed())
@@ -223,6 +226,7 @@ impl Tracer {
             Function::NegCurve => (x * x - y * y) * 0.5 - z,
             Function::SinXLin => (y * 4.0 * std::f64::consts::PI).sin() * x - z,
             Function::SinXQuad => (y * 4.0 * std::f64::consts::PI).sin() * x * x - z,
+            Function::Hole => x * x + y * y - z * z - 0.1,
         }
     }
 
@@ -358,7 +362,7 @@ impl Tracer {
         let mut v = Vec::new(); // Vertices
         let mut i = Vec::new(); // Indices
 
-        let mut build = |constraint: &Vec3| {
+        let mut build = |constraint: &Vec3, flip: f64| {
             let x_scale = constraint.x;
             let y_scale = constraint.y;
             for idx in 0..=self.grid_size {
@@ -367,12 +371,12 @@ impl Tracer {
                     x: coord * x_scale - 1.0,
                     y: coord * y_scale - 1.0,
                     z: 1.0,
-                };
+                }.scale(flip);
                 let p_prev = Vec3 {
                     x: coord * x_scale - 1.0 - (1.0 - x_scale) * RAY_STEP,
                     y: coord * y_scale - 1.0 - (1.0 - y_scale) * RAY_STEP,
                     z: 1.0,
-                };
+                }.scale(flip);
 
                 let old_len = v.len() / 3;
                 // Build vertices.
@@ -391,16 +395,41 @@ impl Tracer {
             }
         };
 
-        build(&Vec3 {
-            x: 1.0,
-            y: 0.0,
-            z: 0.0,
-        });
-        build(&Vec3 {
-            x: 0.0,
-            y: 1.0,
-            z: 0.0,
-        });
+        build(
+            &Vec3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            1.0,
+        );
+        build(
+            &Vec3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            1.0,
+        );
+        // Fun special case
+        if self.func == Function::Hole {
+            build(
+                &Vec3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                -1.0,
+            );
+            build(
+                &Vec3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+                -1.0,
+            );
+        }
 
         (v, i)
     }
