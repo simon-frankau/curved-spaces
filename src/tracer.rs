@@ -57,7 +57,7 @@ impl Shape {
         unsafe {
             let vertices_u8: &[u8] = core::slice::from_raw_parts(
                 vertices.as_ptr() as *const u8,
-                vertices.len() * core::mem::size_of::<f32>(),
+                std::mem::size_of_val(vertices),
             );
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
             gl.buffer_data_u8_slice(glow::ARRAY_BUFFER, vertices_u8, glow::STATIC_DRAW);
@@ -213,22 +213,17 @@ impl Tracer {
         self.paths2.close(gl);
     }
 
-    // Explicit form equations.
-    fn z(&self, x: f64, y: f64) -> f64 {
-        (match self.func {
-            Function::Plane => (x + y) * 0.5,
-            Function::PosCurve => -(x * x + y * y) * 0.5,
-            Function::NegCurve => (x * x - y * y) * 0.5,
-            Function::SinXLin => (y * 4.0 * std::f64::consts::PI).sin() * x,
-            Function::SinXQuad => (y * 4.0 * std::f64::consts::PI).sin() * x * x,
-        }) * self.z_scale
-    }
-
     // Not a true distance, but the implicit surface function, where
     // the surface is all points where dist == 0.
     fn dist(&self, point: &Vec3) -> f64 {
-        // TODO: Provide some real implicit surfaces
-        self.z(point.x, point.y) - point.z
+        let (x, y, z) = (point.x, point.y, point.z / self.z_scale);
+        match self.func {
+            Function::Plane => (x + y) * 0.5 - z,
+            Function::PosCurve => -(x * x + y * y) * 0.5 - z,
+            Function::NegCurve => (x * x - y * y) * 0.5 - z,
+            Function::SinXLin => (y * 4.0 * std::f64::consts::PI).sin() * x - z,
+            Function::SinXQuad => (y * 4.0 * std::f64::consts::PI).sin() * x * x - z,
+        }
     }
 
     fn intersect_line(&self, point: &Vec3, direction: &Vec3) -> Vec3 {
@@ -239,7 +234,7 @@ impl Tracer {
         const MAX_ITER: usize = 10;
 
         let mut lambda = 0.0;
-        for i in 0..MAX_ITER {
+        for _ in 0..MAX_ITER {
             let guess = point.add(&direction.scale(lambda));
             let guess_val = self.dist(&guess);
             if guess_val.abs() < EPSILON {
@@ -335,21 +330,21 @@ impl Tracer {
         let mut vertices: Vec<f32> = Vec::new();
 
         let (x0, y0) = self.ray_start;
-        let mut p = self.project_vertical(&Vec3 {
+        let p = self.project_vertical(&Vec3 {
             x: x0,
             y: y0,
             z: 1.0,
         });
 
         let ray_dir_rad = ray_dir * std::f64::consts::PI / 180.0;
-        let mut delta = Vec3 {
+        let delta = Vec3 {
             x: ray_dir_rad.sin() * RAY_STEP,
             y: ray_dir_rad.cos() * RAY_STEP,
             z: 0.0,
         };
 
         // Take a step back, roughly, for initial previous point.
-        let mut old_p = self.project_vertical(&p.sub(&delta));
+        let old_p = self.project_vertical(&p.sub(&delta));
 
         self.plot_path(&p, &old_p, &mut vertices, None);
 
@@ -385,7 +380,7 @@ impl Tracer {
                     &self.project_vertical(&p),
                     &self.project_vertical(&p_prev),
                     &mut v,
-                    Some(&constraint),
+                    Some(constraint),
                 );
                 // And indices.
                 let len = v.len() / 3;

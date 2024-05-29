@@ -574,13 +574,13 @@ impl Drawable {
             );
 
             gl.uniform_3_f32(Some(&self.color_id), 0.5f32, 0.5f32, 0.5f32);
-            self.tracer.grid.draw(&gl, glow::LINES);
+            self.tracer.grid.draw(gl, glow::LINES);
 
             gl.uniform_3_f32(Some(&self.color_id), 1.0f32, 0.5f32, 0.5f32);
-            self.tracer.paths.draw(&gl, glow::LINE_STRIP);
+            self.tracer.paths.draw(gl, glow::LINE_STRIP);
 
             gl.uniform_3_f32(Some(&self.color_id), 0.5f32, 01.0f32, 0.5f32);
-            self.tracer.paths2.draw(&gl, glow::LINE_STRIP);
+            self.tracer.paths2.draw(gl, glow::LINE_STRIP);
         }
     }
 
