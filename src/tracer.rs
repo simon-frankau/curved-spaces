@@ -127,7 +127,6 @@ pub struct Tracer {
     z_scale: f64,
     ray_start: (f64, f64),
     ray_dir: f64,
-    iter: usize,
     func: Function,
 }
 
@@ -141,7 +140,6 @@ impl Tracer {
             z_scale: 0.25,
             ray_start: (0.0, -0.9),
             ray_dir: 0.0,
-            iter: 1,
             func: Function::SinXQuad,
         }
     }
@@ -163,9 +161,6 @@ impl Tracer {
             .changed();
         needs_repath |= ui
             .add(egui::Slider::new(&mut self.ray_dir, -180.0..=180.0).text("Ray angle"))
-            .changed();
-        needs_repath |= ui
-            .add(egui::Slider::new(&mut self.iter, 1..=10).text("Iterations"))
             .changed();
         needs_regrid |= egui::ComboBox::from_label("Function")
             .selected_text(self.func.label())
@@ -371,12 +366,14 @@ impl Tracer {
                     x: coord * x_scale - 1.0,
                     y: coord * y_scale - 1.0,
                     z: 1.0,
-                }.scale(flip);
+                }
+                .scale(flip);
                 let p_prev = Vec3 {
                     x: coord * x_scale - 1.0 - (1.0 - x_scale) * RAY_STEP,
                     y: coord * y_scale - 1.0 - (1.0 - y_scale) * RAY_STEP,
                     z: 1.0,
-                }.scale(flip);
+                }
+                .scale(flip);
 
                 let old_len = v.len() / 3;
                 // Build vertices.
