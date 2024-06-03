@@ -127,6 +127,7 @@ pub struct Tracer {
     z_scale: f64,
     ray_start: (f64, f64),
     ray_dir: f64,
+    origin_ok: bool,
     func: Function,
 }
 
@@ -140,13 +141,23 @@ impl Tracer {
             z_scale: 0.25,
             ray_start: (0.0, -0.9),
             ray_dir: 0.0,
+            origin_ok: true,
             func: Function::SinXQuad,
         }
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui, gl: &Context) {
+        use egui::Color32;
         let mut needs_regrid = false;
         let mut needs_repath = false;
+        // Is there a less unpleasant way to make this type nicely?
+        let red_on_fail: &dyn Fn(egui::Slider) -> egui::Slider = &|x| {
+            if self.origin_ok {
+                x
+            } else {
+                x.text_color(Color32::RED)
+            }
+        };
         needs_regrid |= ui
             .add(egui::Slider::new(&mut self.grid_size, 2..=100).text("Grid size"))
             .changed();
@@ -154,10 +165,14 @@ impl Tracer {
             .add(egui::Slider::new(&mut self.z_scale, -1.0..=1.0).text("Z scale"))
             .changed();
         needs_repath |= ui
-            .add(egui::Slider::new(&mut self.ray_start.0, -1.0..=1.0).text("X ray origin"))
+            .add(red_on_fail(
+                egui::Slider::new(&mut self.ray_start.0, -1.0..=1.0).text("X ray origin"),
+            ))
             .changed();
         needs_repath |= ui
-            .add(egui::Slider::new(&mut self.ray_start.1, -1.0..=1.0).text("Y ray origin"))
+            .add(red_on_fail(
+                egui::Slider::new(&mut self.ray_start.1, -1.0..=1.0).text("Y ray origin"),
+            ))
             .changed();
         needs_repath |= ui
             .add(egui::Slider::new(&mut self.ray_dir, -180.0..=180.0).text("Ray angle"))
@@ -225,7 +240,12 @@ impl Tracer {
         }
     }
 
-    fn intersect_line(&self, point: &Vec3, direction: &Vec3) -> Vec3 {
+    // TODO: Need to deal with the cases where the solver fails for
+    // reasons other than the origin's not ok. In particular, this can
+    // happen when trying to draw the grid (where the path is forced
+    // along grid axes.
+
+    fn intersect_line(&self, point: &Vec3, direction: &Vec3) -> Option<Vec3> {
         // Newton-Raphson solver on dist(point + lambda direction)
         const EPSILON: f64 = 1.0e-7;
         // In practice, it's locally flat enough that a a single
@@ -237,7 +257,7 @@ impl Tracer {
             let guess = point.add(&direction.scale(lambda));
             let guess_val = self.dist(&guess);
             if guess_val.abs() < EPSILON {
-                return guess;
+                return Some(guess);
             }
 
             let guess2 = point.add(&direction.scale(lambda + EPSILON));
@@ -248,16 +268,15 @@ impl Tracer {
             lambda -= guess_val / dguess_val;
         }
 
-        log::error!("intersect_line failed to converge");
         // Could fall back to binary chop, but as it generally seems
         // to converge in <= 2 iterations, this seems excessive.
-        point.add(&direction.scale(lambda))
+        None
     }
 
     // Intersect the surface with a line in the z-axis from the
     // point. Roughly like the "z" function, except it should find the
     // nearest intersection.
-    fn project_vertical(&self, point: &Vec3) -> Vec3 {
+    fn project_vertical(&self, point: &Vec3) -> Option<Vec3> {
         const VERTICAL: Vec3 = Vec3 {
             x: 0.0,
             y: 0.0,
@@ -311,29 +330,43 @@ impl Tracer {
 
             norm = norm.norm();
 
-            let new_p = self.intersect_line(&p.add(&delta), &norm);
-
-            (p, old_p) = (new_p, p);
+            if let Some(new_p) = self.intersect_line(&p.add(&delta), &norm) {
+                (p, old_p) = (new_p, p);
+            } else {
+                log::error!("plot_path could not extend path");
+                return;
+            }
         }
         // Clip last point against grid and add.
         let delta = p.sub(&old_p);
         let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
         let y_excess = ((p.y.abs()) - 1.0) / delta.y.abs();
         let fract = x_excess.max(y_excess);
-        p = self.project_vertical(&p.sub(&delta.scale(fract)));
-        p.push_to(vertices);
+        // We assume we can always find an intersection point at the
+        // grid's edge.
+        self.project_vertical(&p.sub(&delta.scale(fract)))
+            .unwrap()
+            .push_to(vertices);
     }
 
     fn repath_aux(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u16>) {
+        const NOTHING: (Vec<f32>, Vec<u16>) = (vec![], vec![]);
+
         // Generate the vertices.
         let mut vertices: Vec<f32> = Vec::new();
 
         let (x0, y0) = self.ray_start;
-        let p = self.project_vertical(&Vec3 {
+        let p = if let Some(p) = self.project_vertical(&Vec3 {
             x: x0,
             y: y0,
             z: 1.0,
-        });
+        }) {
+            p
+        } else {
+            // No intersection point at ray_start. Give up.
+            self.origin_ok = false;
+            return NOTHING;
+        };
 
         let ray_dir_rad = ray_dir * std::f64::consts::PI / 180.0;
         let delta = Vec3 {
@@ -343,7 +376,15 @@ impl Tracer {
         };
 
         // Take a step back, roughly, for initial previous point.
-        let old_p = self.project_vertical(&p.sub(&delta));
+        let old_p = if let Some(p) = self.project_vertical(&p.sub(&delta)) {
+            p
+        } else {
+            // No intersection point near ray_start. Give up.
+            self.origin_ok = false;
+            return NOTHING;
+        };
+
+        self.origin_ok = true;
 
         self.plot_path(&p, &old_p, &mut vertices, None);
 
@@ -376,10 +417,11 @@ impl Tracer {
                 .scale(flip);
 
                 let old_len = v.len() / 3;
-                // Build vertices.
+                // Build vertices. We assume we can always
+                // project_vertical the points at the grid's edge.
                 self.plot_path(
-                    &self.project_vertical(&p),
-                    &self.project_vertical(&p_prev),
+                    &self.project_vertical(&p).unwrap(),
+                    &self.project_vertical(&p_prev).unwrap(),
                     &mut v,
                     Some(constraint),
                 );
