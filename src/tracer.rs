@@ -11,6 +11,9 @@ use crate::vec3::*;
 // Size of a step when tracing a ray.
 const RAY_STEP: f64 = 0.01;
 
+// Step size when doing finite-difference calculations.
+const EPSILON: f64 = 1.0e-7;
+
 ////////////////////////////////////////////////////////////////////////
 // Shape: Representation of something to be drawn in OpenGL with a
 // single `draw_elements` call.
@@ -231,7 +234,7 @@ impl Tracer {
     fn dist(&self, point: &Vec3) -> f64 {
         // If z_scale is zero, the implicit surface needs to be
         // special-cased to work.
-        if self.z_scale.abs() <= 1.0e-7 {
+        if self.z_scale.abs() <= EPSILON {
             return point.z;
         }
 
@@ -253,7 +256,7 @@ impl Tracer {
 
     fn intersect_line(&self, point: &Vec3, direction: &Vec3) -> Option<Vec3> {
         // Newton-Raphson solver on dist(point + lambda direction)
-        const EPSILON: f64 = 1.0e-7;
+        //
         // In practice, it's locally flat enough that a a single
         // iteration seems to suffice.
         const MAX_ITER: usize = 10;
@@ -291,9 +294,38 @@ impl Tracer {
         self.intersect_line(point, &VERTICAL)
     }
 
-    fn plot_path(&self, point: &Vec3, prev: &Vec3, vertices: &mut Vec<f32>) {
-        const EPSILON: f64 = 1.0e-7;
+    // Calculate a normal vector using finite differences.
+    fn normal_at(&self, p: &Vec3) -> Vec3 {
+        let base_dist = self.dist(&p);
+        Vec3 {
+            x: self.dist(&Vec3 {
+                x: p.x + EPSILON,
+                ..*p
+            }) - base_dist,
+            y: self.dist(&Vec3 {
+                y: p.y + EPSILON,
+                ..*p
+            }) - base_dist,
+            z: self.dist(&Vec3 {
+                z: p.z + EPSILON,
+                ..*p
+            }) - base_dist,
+        }
+    }
 
+    // Clip point back to an edge.
+    fn clip(&self, p: &Vec3, prev: &Vec3) -> Vec3 {
+        // Clip last point against grid and add.
+        let delta = p.sub(&prev);
+        let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
+        let y_excess = ((p.y.abs()) - 1.0) / delta.y.abs();
+        let fract = x_excess.max(y_excess);
+        // We assume we can always find an intersection point at the
+        // grid's edge.
+        self.project_vertical(&p.sub(&delta.scale(fract))).unwrap()
+    }
+
+    fn plot_path(&self, point: &Vec3, prev: &Vec3, vertices: &mut Vec<f32>) {
         let mut p = point.clone();
         let mut old_p = prev.clone();
 
@@ -301,24 +333,7 @@ impl Tracer {
             p.push_to(vertices);
 
             let delta = p.sub(&old_p).norm().scale(RAY_STEP);
-
-            let base_dist = self.dist(&p);
-            let mut norm = Vec3 {
-                x: self.dist(&Vec3 {
-                    x: p.x + EPSILON,
-                    ..p
-                }) - base_dist,
-                y: self.dist(&Vec3 {
-                    y: p.y + EPSILON,
-                    ..p
-                }) - base_dist,
-                z: self.dist(&Vec3 {
-                    z: p.z + EPSILON,
-                    ..p
-                }) - base_dist,
-            };
-
-            norm = norm.norm();
+            let norm = self.normal_at(&p).norm();
 
             if let Some(new_p) = self.intersect_line(&p.add(&delta), &norm) {
                 (p, old_p) = (new_p, p);
@@ -327,16 +342,8 @@ impl Tracer {
                 return;
             }
         }
-        // Clip last point against grid and add.
-        let delta = p.sub(&old_p);
-        let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
-        let y_excess = ((p.y.abs()) - 1.0) / delta.y.abs();
-        let fract = x_excess.max(y_excess);
-        // We assume we can always find an intersection point at the
-        // grid's edge.
-        self.project_vertical(&p.sub(&delta.scale(fract)))
-            .unwrap()
-            .push_to(vertices);
+
+        self.clip(&p, &old_p).push_to(vertices);
     }
 
     fn repath_aux(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u32>) {
@@ -393,8 +400,6 @@ impl Tracer {
         vertices: &mut Vec<f32>,
         constraint: &Vec3,
     ) {
-        const EPSILON: f64 = 1.0e-7;
-
         // "constraint" should be pre-normalised.
         assert!((constraint.dot(constraint) - 1.0).abs() <= EPSILON);
 
@@ -405,22 +410,7 @@ impl Tracer {
             p.push_to(vertices);
 
             let mut delta = p.sub(&old_p).norm().scale(RAY_STEP);
-
-            let base_dist = self.dist(&p);
-            let mut norm = Vec3 {
-                x: self.dist(&Vec3 {
-                    x: p.x + EPSILON,
-                    ..p
-                }) - base_dist,
-                y: self.dist(&Vec3 {
-                    y: p.y + EPSILON,
-                    ..p
-                }) - base_dist,
-                z: self.dist(&Vec3 {
-                    z: p.z + EPSILON,
-                    ..p
-                }) - base_dist,
-            };
+            let mut norm = self.normal_at(&p);
 
             // Constrain the curvature to lie in the given plane.
             let projection_len = norm.dot(constraint);
@@ -449,16 +439,7 @@ impl Tracer {
             }
         }
 
-        // Clip last point against grid and add.
-        let delta = p.sub(&old_p);
-        let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
-        let y_excess = ((p.y.abs()) - 1.0) / delta.y.abs();
-        let fract = x_excess.max(y_excess);
-        // We assume we can always find an intersection point at the
-        // grid's edge.
-        self.project_vertical(&p.sub(&delta.scale(fract)))
-            .unwrap()
-            .push_to(vertices);
+        self.clip(&p, &old_p).push_to(vertices);
     }
 
     fn create_grid(&self) -> (Vec<f32>, Vec<u32>) {
