@@ -396,7 +396,7 @@ impl Tracer {
         const EPSILON: f64 = 1.0e-7;
 
         // "constraint" should be pre-normalised.
-        assert!((constraint.dot(&constraint) - 1.0).abs() <= EPSILON);
+        assert!((constraint.dot(constraint) - 1.0).abs() <= EPSILON);
 
         let mut p = point.clone();
         let mut old_p = prev.clone();
@@ -423,7 +423,7 @@ impl Tracer {
             };
 
             // Constrain the curvature to lie in the given plane.
-            let projection_len = norm.dot(&constraint);
+            let projection_len = norm.dot(constraint);
             let projection_vec = constraint.scale(projection_len);
             norm = norm.sub(&projection_vec).norm();
 
@@ -435,13 +435,8 @@ impl Tracer {
             const MAX_ITER: usize = 4;
             let mut new_p = None;
             let mut iter = 0;
-            while let None = new_p {
-                if iter == MAX_ITER {
-                    break;
-                }
-
+            while new_p.is_none() && iter < MAX_ITER {
                 new_p = self.intersect_line(&p.add(&delta), &norm);
-
                 delta = delta.scale(0.5);
                 iter += 1;
             }
