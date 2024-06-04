@@ -229,6 +229,12 @@ impl Tracer {
     // Not a true distance, but the implicit surface function, where
     // the surface is all points where dist == 0.
     fn dist(&self, point: &Vec3) -> f64 {
+        // If z_scale is zero, the implicit surface needs to be
+        // special-cased to work.
+        if self.z_scale.abs() <= 1.0e-7 {
+            return point.z;
+        }
+
         let (x, y, z) = (point.x, point.y, point.z / self.z_scale);
         match self.func {
             Function::Plane => (x + y) * 0.5 - z,
@@ -285,13 +291,7 @@ impl Tracer {
         self.intersect_line(point, &VERTICAL)
     }
 
-    fn plot_path(
-        &self,
-        point: &Vec3,
-        prev: &Vec3,
-        vertices: &mut Vec<f32>,
-        constraint: Option<&Vec3>,
-    ) {
+    fn plot_path(&self, point: &Vec3, prev: &Vec3, vertices: &mut Vec<f32>) {
         const EPSILON: f64 = 1.0e-7;
 
         let mut p = point.clone();
@@ -317,16 +317,6 @@ impl Tracer {
                     ..p
                 }) - base_dist,
             };
-
-            if let Some(constr) = constraint {
-                // Constrain the curvature to lie in the given plane.
-                // "constraint" should be pre-normalised.
-                assert!((constr.dot(constr) - 1.0).abs() <= EPSILON);
-
-                let projection_len = norm.dot(constr);
-                let projection_vec = constr.scale(projection_len);
-                norm = norm.sub(&projection_vec)
-            }
 
             norm = norm.norm();
 
@@ -386,12 +376,94 @@ impl Tracer {
 
         self.origin_ok = true;
 
-        self.plot_path(&p, &old_p, &mut vertices, None);
+        self.plot_path(&p, &old_p, &mut vertices);
 
         // Generate the indices.
         let indices = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
 
         (vertices, indices)
+    }
+
+    // This version of plot_path forces the line to lie within a given
+    // plane, used for drawing the grid.
+    fn plot_path_constrained(
+        &self,
+        point: &Vec3,
+        prev: &Vec3,
+        vertices: &mut Vec<f32>,
+        constraint: &Vec3,
+    ) {
+        const EPSILON: f64 = 1.0e-7;
+
+        // "constraint" should be pre-normalised.
+        assert!((constraint.dot(&constraint) - 1.0).abs() <= EPSILON);
+
+        let mut p = point.clone();
+        let mut old_p = prev.clone();
+
+        while p.x.abs() <= 1.0 && p.y.abs() <= 1.0 {
+            p.push_to(vertices);
+
+            let mut delta = p.sub(&old_p).norm().scale(RAY_STEP);
+
+            let base_dist = self.dist(&p);
+            let mut norm = Vec3 {
+                x: self.dist(&Vec3 {
+                    x: p.x + EPSILON,
+                    ..p
+                }) - base_dist,
+                y: self.dist(&Vec3 {
+                    y: p.y + EPSILON,
+                    ..p
+                }) - base_dist,
+                z: self.dist(&Vec3 {
+                    z: p.z + EPSILON,
+                    ..p
+                }) - base_dist,
+            };
+
+            // Constrain the curvature to lie in the given plane.
+            let projection_len = norm.dot(&constraint);
+            let projection_vec = constraint.scale(projection_len);
+            norm = norm.sub(&projection_vec).norm();
+
+            // Constraining the curvature direction so that the normal
+            // is no longer genuinely normal to the surface can make
+            // it so that in areas of high curvature there's no
+            // intersection. So, if it fails, try again a few more
+            // times with a smaller subdivision.
+            const MAX_ITER: usize = 4;
+            let mut new_p = None;
+            let mut iter = 0;
+            while let None = new_p {
+                if iter == MAX_ITER {
+                    break;
+                }
+
+                new_p = self.intersect_line(&p.add(&delta), &norm);
+
+                delta = delta.scale(0.5);
+                iter += 1;
+            }
+
+            if let Some(new_p) = new_p {
+                (p, old_p) = (new_p, p);
+            } else {
+                log::error!("plot_path_constrained could not extend path");
+                return;
+            }
+        }
+
+        // Clip last point against grid and add.
+        let delta = p.sub(&old_p);
+        let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
+        let y_excess = ((p.y.abs()) - 1.0) / delta.y.abs();
+        let fract = x_excess.max(y_excess);
+        // We assume we can always find an intersection point at the
+        // grid's edge.
+        self.project_vertical(&p.sub(&delta.scale(fract)))
+            .unwrap()
+            .push_to(vertices);
     }
 
     fn create_grid(&self) -> (Vec<f32>, Vec<u16>) {
@@ -419,11 +491,11 @@ impl Tracer {
                 let old_len = v.len() / 3;
                 // Build vertices. We assume we can always
                 // project_vertical the points at the grid's edge.
-                self.plot_path(
+                self.plot_path_constrained(
                     &self.project_vertical(&p).unwrap(),
                     &self.project_vertical(&p_prev).unwrap(),
                     &mut v,
-                    Some(constraint),
+                    constraint,
                 );
                 // And indices.
                 let len = v.len() / 3;
