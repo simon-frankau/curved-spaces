@@ -238,7 +238,15 @@ impl Tracer {
             return point.z;
         }
 
-        let (x, y, z) = (point.x, point.y, point.z / self.z_scale);
+        // If the surface folds back, put a floor on the absolute
+        // z_scale, otherwise multiple solutions get too close
+        // together and the solver has a bad time.
+        let mut z_scale = self.z_scale;
+        if self.func == Function::Hole {
+            z_scale = z_scale.signum() * z_scale.abs().max(0.02);
+        }
+
+        let (x, y, z) = (point.x, point.y, point.z / z_scale);
         match self.func {
             Function::Plane => (x + y) * 0.5 - z,
             Function::PosCurve => -(x * x + y * y) * 0.5 - z,
@@ -278,7 +286,8 @@ impl Tracer {
         }
 
         // Could fall back to binary chop, but as it generally seems
-        // to converge in <= 2 iterations, this seems excessive.
+        // to converge in <= 2 iterations if there is a solution, this
+        // seems excessive.
         None
     }
 
@@ -292,6 +301,28 @@ impl Tracer {
             z: 1.0,
         };
         self.intersect_line(point, &VERTICAL)
+    }
+
+    // Take a step from p in direction delta, constrained to the
+    // surface in direction norm.
+    fn step(&self, p: &Vec3, delta: &Vec3, norm: &Vec3) -> Option<Vec3> {
+        let mut delta = delta.clone();
+        // If curvature is extreme, there may be no intersection,
+        // because the normal at p and the normal at the intersection
+        // point are sufficiently different. We try again with a
+        // smaller step.
+        //
+        // An example of extreme curvature is the "wormhole" surface
+        // with z_scale around e.g. 0.01.
+        const MAX_ITER: usize = 8;
+        let mut new_p = None;
+        let mut iter = 0;
+        while new_p.is_none() && iter < MAX_ITER {
+            new_p = self.intersect_line(&p.add(&delta), &norm);
+            delta = delta.scale(0.5);
+            iter += 1;
+        }
+        new_p
     }
 
     // Calculate a normal vector using finite differences.
@@ -335,7 +366,7 @@ impl Tracer {
             let delta = p.sub(&old_p).norm().scale(RAY_STEP);
             let norm = self.normal_at(&p).norm();
 
-            if let Some(new_p) = self.intersect_line(&p.add(&delta), &norm) {
+            if let Some(new_p) = self.step(&p, &delta, &norm) {
                 (p, old_p) = (new_p, p);
             } else {
                 log::error!("plot_path could not extend path");
@@ -417,21 +448,7 @@ impl Tracer {
             let projection_vec = constraint.scale(projection_len);
             norm = norm.sub(&projection_vec).norm();
 
-            // Constraining the curvature direction so that the normal
-            // is no longer genuinely normal to the surface can make
-            // it so that in areas of high curvature there's no
-            // intersection. So, if it fails, try again a few more
-            // times with a smaller subdivision.
-            const MAX_ITER: usize = 4;
-            let mut new_p = None;
-            let mut iter = 0;
-            while new_p.is_none() && iter < MAX_ITER {
-                new_p = self.intersect_line(&p.add(&delta), &norm);
-                delta = delta.scale(0.5);
-                iter += 1;
-            }
-
-            if let Some(new_p) = new_p {
+            if let Some(new_p) = self.step(&p, &delta, &norm) {
                 (p, old_p) = (new_p, p);
             } else {
                 log::error!("plot_path_constrained could not extend path");
