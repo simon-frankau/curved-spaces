@@ -53,7 +53,7 @@ impl Shape {
         }
     }
 
-    fn rebuild(&mut self, gl: &Context, vertices: &[f32], indices: &[u16]) {
+    fn rebuild(&mut self, gl: &Context, vertices: &[f32], indices: &[u32]) {
         unsafe {
             let vertices_u8: &[u8] = core::slice::from_raw_parts(
                 vertices.as_ptr() as *const u8,
@@ -64,7 +64,7 @@ impl Shape {
 
             let indices_u8: &[u8] = core::slice::from_raw_parts(
                 indices.as_ptr() as *const u8,
-                indices.len() * core::mem::size_of::<f32>(),
+                std::mem::size_of_val(indices),
             );
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
             gl.buffer_data_u8_slice(glow::ELEMENT_ARRAY_BUFFER, indices_u8, glow::STATIC_DRAW);
@@ -79,7 +79,7 @@ impl Shape {
             gl.bind_vertex_array(Some(self.vao));
             gl.enable_vertex_attrib_array(0);
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(self.ibo));
-            gl.draw_elements(gl_type, self.num_elts, glow::UNSIGNED_SHORT, 0);
+            gl.draw_elements(gl_type, self.num_elts, glow::UNSIGNED_INT, 0);
             gl.disable_vertex_attrib_array(0);
         }
     }
@@ -339,8 +339,8 @@ impl Tracer {
             .push_to(vertices);
     }
 
-    fn repath_aux(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u16>) {
-        const NOTHING: (Vec<f32>, Vec<u16>) = (vec![], vec![]);
+    fn repath_aux(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u32>) {
+        const NOTHING: (Vec<f32>, Vec<u32>) = (vec![], vec![]);
 
         // Generate the vertices.
         let mut vertices: Vec<f32> = Vec::new();
@@ -379,7 +379,7 @@ impl Tracer {
         self.plot_path(&p, &old_p, &mut vertices);
 
         // Generate the indices.
-        let indices = (0..vertices.len() as u16 / 3).collect::<Vec<u16>>();
+        let indices = (0..vertices.len() as u32 / 3).collect::<Vec<u32>>();
 
         (vertices, indices)
     }
@@ -466,7 +466,7 @@ impl Tracer {
             .push_to(vertices);
     }
 
-    fn create_grid(&self) -> (Vec<f32>, Vec<u16>) {
+    fn create_grid(&self) -> (Vec<f32>, Vec<u32>) {
         let mut v = Vec::new(); // Vertices
         let mut i = Vec::new(); // Indices
 
@@ -500,8 +500,8 @@ impl Tracer {
                 // And indices.
                 let len = v.len() / 3;
                 for idx in old_len..len - 2 {
-                    i.push(idx as u16);
-                    i.push(idx as u16 + 1);
+                    i.push(idx as u32);
+                    i.push(idx as u32 + 1);
                 }
             }
         };
