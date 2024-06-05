@@ -130,6 +130,8 @@ pub struct Tracer {
     z_scale: f64,
     ray_start: (f64, f64),
     ray_dir: f64,
+    ray_count: usize,
+    ray_width: f64,
     origin_ok: bool,
     func: Function,
 }
@@ -144,6 +146,8 @@ impl Tracer {
             z_scale: 0.25,
             ray_start: (0.0, -0.9),
             ray_dir: 0.0,
+            ray_count: 10,
+            ray_width: 30.0,
             origin_ok: true,
             func: Function::SinXQuad,
         }
@@ -179,6 +183,12 @@ impl Tracer {
             .changed();
         needs_repath |= ui
             .add(egui::Slider::new(&mut self.ray_dir, -180.0..=180.0).text("Ray angle"))
+            .changed();
+        needs_repath |= ui
+            .add(egui::Slider::new(&mut self.ray_count, 1..=30).text("Ray count"))
+            .changed();
+        needs_repath |= ui
+            .add(egui::Slider::new(&mut self.ray_width, 1.0..=90.0).text("Ray fan width"))
             .changed();
         needs_regrid |= egui::ComboBox::from_label("Function")
             .selected_text(self.func.label())
@@ -241,12 +251,33 @@ impl Tracer {
     }
 
     pub fn repath(&mut self, gl: &Context) {
+        let (ray_step, ray_start);
+        if self.ray_count > 1 {
+            ray_step = self.ray_width / (self.ray_count - 1) as f64;
+            ray_start = self.ray_dir - self.ray_width / 2.0;
+        } else {
+            ray_step = 0.0;
+            ray_start = self.ray_dir;
+        };
+
         {
-            let (vertices, indices) = self.repath_aux(self.ray_dir);
+            let mut vertices = Vec::new();
+            let mut indices = Vec::new();
+            for i in 0..self.ray_count {
+                self.repath_aux(ray_start + i as f64 * ray_step, &mut vertices, &mut indices);
+            }
             self.paths.rebuild(gl, &vertices, &indices);
         }
         {
-            let (vertices, indices) = self.repath_aux(self.ray_dir + 180.0);
+            let mut vertices = Vec::new();
+            let mut indices = Vec::new();
+            for i in 0..self.ray_count {
+                self.repath_aux(
+                    ray_start + 180.0 + i as f64 * ray_step,
+                    &mut vertices,
+                    &mut indices,
+                );
+            }
             self.paths2.rebuild(gl, &vertices, &indices);
         }
     }
@@ -384,7 +415,23 @@ impl Tracer {
         self.project_vertical(&p.sub(&delta.scale(fract))).unwrap()
     }
 
-    fn plot_path(&self, point: &Vec3, prev: &Vec3, vertices: &mut Vec<f32>) {
+    fn gen_indices(&self, start: usize, vertices: &Vec<f32>, indices: &mut Vec<u32>) {
+        let len = vertices.len() / 3;
+        for idx in start..len - 2 {
+            indices.push(idx as u32);
+            indices.push(idx as u32 + 1);
+        }
+    }
+
+    fn plot_path(
+        &self,
+        point: &Vec3,
+        prev: &Vec3,
+        vertices: &mut Vec<f32>,
+        indices: &mut Vec<u32>,
+    ) {
+        let old_len = vertices.len() / 3;
+
         let mut p = point.clone();
         let mut old_p = prev.clone();
 
@@ -398,19 +445,16 @@ impl Tracer {
                 (p, old_p) = (new_p, p);
             } else {
                 log::error!("plot_path could not extend path");
+                self.gen_indices(old_len, vertices, indices);
                 return;
             }
         }
 
         self.clip(&p, &old_p).push_to(vertices);
+        self.gen_indices(old_len, vertices, indices);
     }
 
-    fn repath_aux(&mut self, ray_dir: f64) -> (Vec<f32>, Vec<u32>) {
-        const NOTHING: (Vec<f32>, Vec<u32>) = (vec![], vec![]);
-
-        // Generate the vertices.
-        let mut vertices: Vec<f32> = Vec::new();
-
+    fn repath_aux(&mut self, ray_dir: f64, vertices: &mut Vec<f32>, indices: &mut Vec<u32>) {
         let (x0, y0) = self.ray_start;
         let p = if let Some(p) = self.project_vertical(&Vec3 {
             x: x0,
@@ -421,7 +465,7 @@ impl Tracer {
         } else {
             // No intersection point at ray_start. Give up.
             self.origin_ok = false;
-            return NOTHING;
+            return;
         };
 
         let ray_dir_rad = ray_dir * std::f64::consts::PI / 180.0;
@@ -437,17 +481,11 @@ impl Tracer {
         } else {
             // No intersection point near ray_start. Give up.
             self.origin_ok = false;
-            return NOTHING;
+            return;
         };
 
         self.origin_ok = true;
-
-        self.plot_path(&p, &old_p, &mut vertices);
-
-        // Generate the indices.
-        let indices = (0..vertices.len() as u32 / 3).collect::<Vec<u32>>();
-
-        (vertices, indices)
+        self.plot_path(&p, &old_p, vertices, indices);
     }
 
     // This version of plot_path forces the line to lie within a given
@@ -457,10 +495,13 @@ impl Tracer {
         point: &Vec3,
         prev: &Vec3,
         vertices: &mut Vec<f32>,
+        indices: &mut Vec<u32>,
         constraint: &Vec3,
     ) {
         // "constraint" should be pre-normalised.
         assert!((constraint.dot(constraint) - 1.0).abs() <= EPSILON);
+
+        let old_len = vertices.len() / 3;
 
         let mut p = point.clone();
         let mut old_p = prev.clone();
@@ -480,11 +521,13 @@ impl Tracer {
                 (p, old_p) = (new_p, p);
             } else {
                 log::error!("plot_path_constrained could not extend path");
+                self.gen_indices(old_len, vertices, indices);
                 return;
             }
         }
 
         self.clip(&p, &old_p).push_to(vertices);
+        self.gen_indices(old_len, vertices, indices);
     }
 
     fn create_grid(&self) -> (Vec<f32>, Vec<u32>) {
@@ -509,21 +552,15 @@ impl Tracer {
                 }
                 .scale(flip);
 
-                let old_len = v.len() / 3;
-                // Build vertices. We assume we can always
-                // project_vertical the points at the grid's edge.
+                // We assume we can always project_vertical the points
+                // at the grid's edge.
                 self.plot_path_constrained(
                     &self.project_vertical(&p).unwrap(),
                     &self.project_vertical(&p_prev).unwrap(),
                     &mut v,
+                    &mut i,
                     constraint,
                 );
-                // And indices.
-                let len = v.len() / 3;
-                for idx in old_len..len - 2 {
-                    i.push(idx as u32);
-                    i.push(idx as u32 + 1);
-                }
             }
         };
 
