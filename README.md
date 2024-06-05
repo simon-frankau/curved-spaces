@@ -225,12 +225,14 @@ which simply represent development history, in order to simplify the
 code. The point before explicit surfaces are removed is represented by
 the branch `explicit_and_implicit_surfaces`.
 
-### Next steps
+### Numeric stability
 
-Proposed plan:
-
- * Handle implicit representation.
- * UI improvements.
+Nice, bendy implicit surfaces allow for some fairly sharp curves that
+can stop the solver from finding the next step within the surface. I
+added some changes to stop you making the surfaces too messy, and
+changed the solver to decrease the step size if there was too much
+curvature otherwise, and this seems to have mostly done the trick. I
+love half-baked numerical methods!
 
 ### And beyond
 
