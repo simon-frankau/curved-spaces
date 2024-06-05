@@ -39,6 +39,8 @@ struct Platform {
 #[cfg(any(target_arch = "wasm32", feature = "glutin_winit"))]
 impl Platform {
     fn run(mut self, mut drawable: Drawable) {
+        use winit::event::*;
+
         // `run` "uses up" the event_loop, so we move it out.
         let mut event_loop = None;
         std::mem::swap(&mut event_loop, &mut self.event_loop);
@@ -58,6 +60,7 @@ impl Platform {
             });
 
         let mut repaint_delay = std::time::Duration::MAX;
+        let mut left_button_down = false;
 
         let event_fn =
             move |event,
@@ -106,8 +109,7 @@ impl Platform {
                 };
 
                 match event {
-                    winit::event::Event::WindowEvent { event, .. } => {
-                        use winit::event::WindowEvent;
+                    Event::WindowEvent { event, .. } => {
                         if matches!(event, WindowEvent::CloseRequested | WindowEvent::Destroyed) {
                             event_loop_window_target.exit();
                             return;
@@ -118,7 +120,7 @@ impl Platform {
                             return;
                         }
 
-                        if let winit::event::WindowEvent::Resized(physical_size) = &event {
+                        if let WindowEvent::Resized(physical_size) = &event {
                             self.resize(physical_size);
                         }
 
@@ -127,18 +129,50 @@ impl Platform {
                         if event_response.repaint {
                             self.window.request_redraw();
                         }
+
+                        if !event_response.consumed {
+                            // We check the WindowEvent rather than
+                            // the DeviceEvent in order to allow egui
+                            // to consume it first.
+                            if let WindowEvent::MouseInput { state, button, .. } = event {
+                                if button == MouseButton::Left {
+                                    left_button_down = state == ElementState::Pressed;
+                                }
+                            }
+                        }
                     }
 
-                    winit::event::Event::UserEvent(UserEvent::Redraw(delay)) => {
+                    Event::DeviceEvent { event, .. } => {
+                        if left_button_down {
+                            // DeviceEvent is better than WindowEvent for
+                            // this kind of camera dragging, according to
+                            // the docs.
+                            if let DeviceEvent::MouseMotion { delta } = event {
+                                let size = self.window.inner_size();
+                                let x = (delta.0 as f32) * 360.0 / size.width as f32;
+                                let y = (delta.1 as f32) * 180.0 / size.height as f32;
+
+                                let turn = &mut drawable.turn;
+                                let tilt = &mut drawable.tilt;
+                                *turn += x;
+                                if *turn > 180.0 {
+                                    *turn -= 360.0;
+                                } else if *turn < -180.0 {
+                                    *turn += 360.0;
+                                }
+                                *tilt = (*tilt + y).min(90.0).max(-90.0);
+                            }
+                        }
+                    }
+
+                    Event::UserEvent(UserEvent::Redraw(delay)) => {
                         repaint_delay = delay;
                     }
-                    winit::event::Event::LoopExiting => {
+                    Event::LoopExiting => {
                         egui_glow.destroy();
                         drawable.close(&self.gl);
                     }
-                    winit::event::Event::NewEvents(
-                        winit::event::StartCause::ResumeTimeReached { .. },
-                    ) => {
+                    Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
                         self.window.request_redraw();
                     }
 

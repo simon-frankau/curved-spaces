@@ -440,7 +440,7 @@ impl Tracer {
         while p.x.abs() <= 1.0 && p.y.abs() <= 1.0 {
             p.push_to(vertices);
 
-            let mut delta = p.sub(&old_p).norm().scale(RAY_STEP);
+            let delta = p.sub(&old_p).norm().scale(RAY_STEP);
             let mut norm = self.normal_at(&p);
 
             // Constrain the curvature to lie in the given plane.
