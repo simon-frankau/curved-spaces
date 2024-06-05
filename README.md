@@ -6,19 +6,18 @@ I'll come clean. My end goal is to visualise what a wormhole would
 actually look like. Not a physically accurate one, but at least a
 mathematically accurate one - what you'd get if you cut out a subspace
 in a pair of $\mathbb{R}^3$ spaces and connected them with a
-"tube". I'm nowhere near that, right now.
+"tube".
 
-As a predecessor step, I'd like to do that for a pair of
-$\mathbb{R}^2$ spaces. Stepping back further, I'd like to understand
-how curved space behaves, mathematically, full stop. On that bit, I
-feel I'm making progress.
+This project is a start, letting you explore a curved $\mathbb{R}^2$
+space. It has allowed me, to some degree, understand how curved space
+behaves, mathematically.
 
 More on that later. First, what is this, and how do you run it?
 
 ## What is this?
 
 This program renders a curved 2D space (embedded in 3D, with a choice
-of 2D surfaces), and lets you point a line through it, seeing how the
+of 2D surfaces), and lets you point lines through it, seeing how the
 line curves over the space. There are various controls you can use,
 I'm lazy (well, actually extremely low on energy) and I'll let you
 figure them out by yourself, reading the source if necessary.
@@ -41,7 +40,7 @@ cargo run --features=sdl2
 
 Running with sdl2 is not recommended, as the egui-based GUI is
 disabled, effectively rendering it useless. This is really a stub for
-future work.
+potential future work.
 
 ### Web
 
@@ -235,6 +234,10 @@ curvature otherwise, and this seems to have mostly done the trick. I
 love half-baked numerical methods!
 
 ### And beyond
+
+At this point, I'm fairly happy with what this tool does, and am
+looking to do the tracing through a 3D curved space embedded in 4D, or
+maybe dig further into the maths.
 
 End goals are:
 
