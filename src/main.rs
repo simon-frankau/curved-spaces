@@ -131,13 +131,53 @@ impl Platform {
                         }
 
                         if !event_response.consumed {
-                            // We check the WindowEvent rather than
-                            // the DeviceEvent in order to allow egui
-                            // to consume it first.
-                            if let WindowEvent::MouseInput { state, button, .. } = event {
-                                if button == MouseButton::Left {
-                                    left_button_down = state == ElementState::Pressed;
+                            match event {
+                                // We check the WindowEvent rather
+                                // than the DeviceEvent in order to
+                                // allow egui to consume it first.
+                                WindowEvent::MouseInput { state, button, .. } => {
+                                    if button == MouseButton::Left {
+                                        left_button_down = state == ElementState::Pressed;
+                                    }
                                 }
+                                // We will make use of keyboard
+                                // auto-repeat for movement, rather
+                                // than doing our own key-held
+                                // logic. As we're using WASD keys,
+                                // we'll use the PhysicalKey.
+                                WindowEvent::KeyboardInput { event, .. } => {
+                                    use winit::keyboard::*;
+                                    if let KeyEvent {
+                                        physical_key: PhysicalKey::Code(k),
+                                        state: ElementState::Pressed,
+                                        ..
+                                    } = event
+                                    {
+                                        let t = &mut drawable.tracer;
+                                        match k {
+                                            KeyCode::KeyW => {
+                                                t.update_origin(&self.gl, 0.0, 0.01, 0.0)
+                                            }
+                                            KeyCode::KeyS => {
+                                                t.update_origin(&self.gl, 0.0, -0.01, 0.0)
+                                            }
+                                            KeyCode::KeyA => {
+                                                t.update_origin(&self.gl, -0.01, 0.0, 0.0)
+                                            }
+                                            KeyCode::KeyD => {
+                                                t.update_origin(&self.gl, 0.01, 0.0, 0.0)
+                                            }
+                                            KeyCode::KeyQ => {
+                                                t.update_origin(&self.gl, 0.0, 0.0, -1.0)
+                                            }
+                                            KeyCode::KeyE => {
+                                                t.update_origin(&self.gl, 0.0, 0.0, 1.0)
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }

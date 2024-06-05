@@ -206,6 +206,34 @@ impl Tracer {
         }
     }
 
+    // Update the ray origin, used by keyboard input.
+    pub fn update_origin(&mut self, gl: &Context, dx: f64, dy: f64, dtheta: f64) {
+        let x = &mut self.ray_start.0;
+        let y = &mut self.ray_start.1;
+        let theta = &mut self.ray_dir;
+        let rad = *theta * std::f64::consts::PI / 180.0;
+
+        // Convert local dx/dy into absolute dx/dy (so that 'W' always
+        // moves along the path).
+        //
+        // TODO: This is a hack as the path moves along the X/Y
+        // coordinates of the embedding space, *not* along the path in
+        // the embedded space.
+        let adx = dx * rad.cos() + dy * rad.sin();
+        let ady = dx * -rad.sin() + dy * rad.cos();
+
+        *x = (*x + adx).max(-1.0).min(1.0);
+        *y = (*y + ady).max(-1.0).min(1.0);
+        *theta += dtheta;
+        if *theta > 180.0 {
+            *theta -= 360.0;
+        } else if *theta < -180.0 {
+            *theta += 360.0;
+        }
+
+        self.repath(gl);
+    }
+
     // Regenerate the grid used by OpenGL.
     pub fn regrid(&mut self, gl: &Context) {
         let (vertices, indices) = self.create_grid();
