@@ -377,7 +377,7 @@ impl Tracer {
         let mut new_p = None;
         let mut iter = 0;
         while new_p.is_none() && iter < MAX_ITER {
-            new_p = self.intersect_line(&p.add(&delta), &norm);
+            new_p = self.intersect_line(&p.add(&delta), norm);
             delta = delta.scale(0.5);
             iter += 1;
         }
@@ -386,7 +386,7 @@ impl Tracer {
 
     // Calculate a normal vector using finite differences.
     fn normal_at(&self, p: &Vec3) -> Vec3 {
-        let base_dist = self.dist(&p);
+        let base_dist = self.dist(p);
         Vec3 {
             x: self.dist(&Vec3 {
                 x: p.x + EPSILON,
@@ -406,7 +406,7 @@ impl Tracer {
     // Clip point back to an edge.
     fn clip(&self, p: &Vec3, prev: &Vec3) -> Vec3 {
         // Clip last point against grid and add.
-        let delta = p.sub(&prev);
+        let delta = p.sub(prev);
         let x_excess = ((p.x.abs()) - 1.0) / delta.x.abs();
         let y_excess = ((p.y.abs()) - 1.0) / delta.y.abs();
         let fract = x_excess.max(y_excess);
@@ -415,7 +415,7 @@ impl Tracer {
         self.project_vertical(&p.sub(&delta.scale(fract))).unwrap()
     }
 
-    fn gen_indices(&self, start: usize, vertices: &Vec<f32>, indices: &mut Vec<u32>) {
+    fn gen_indices(&self, start: usize, vertices: &[f32], indices: &mut Vec<u32>) {
         let len = vertices.len() / 3;
         for idx in start..len - 2 {
             indices.push(idx as u32);
