@@ -229,13 +229,11 @@ impl Platform {
 //
 
 #[cfg(target_arch = "wasm32")]
-impl Platform {
-    fn new() -> Result<Platform> {
-        // TODO: Make parameters?
-        let width = 1024;
-        let height = 768;
-        let dest_id = "wasm-canvas";
+const NAME: &str = "wasm-canvas";
 
+#[cfg(target_arch = "wasm32")]
+impl Platform {
+    fn new(width: u32, height: u32, name: &str) -> Result<Platform> {
         use wasm_bindgen::JsCast;
         use winit::platform::web::WindowBuilderExtWebSys;
         use winit::platform::web::WindowExtWebSys;
@@ -249,8 +247,8 @@ impl Platform {
             .ok_or_else(|| anyhow!("Couldn't get document"))?;
 
         let dest = doc
-            .get_element_by_id(dest_id)
-            .ok_or_else(|| anyhow!("Couldn't get element '{}'", dest_id))?;
+            .get_element_by_id(name)
+            .ok_or_else(|| anyhow!("Couldn't get element '{}'", name))?;
 
         // Try casting the element into canvas:
         let canvas_opt = dest.clone().dyn_into::<web_sys::HtmlCanvasElement>().ok();
@@ -337,15 +335,12 @@ impl Platform {
 // glutin_winit: Create a context from a glutin window on non-wasm32
 // targets.
 //
+#[cfg(feature = "glutin_winit")]
+const NAME: &str = "Curved Surfaces";
 
 #[cfg(feature = "glutin_winit")]
 impl Platform {
-    fn new() -> Result<Platform> {
-        // TODO: Make parameters?
-        let width = 1024;
-        let height = 768;
-        let title = "Curved Surfaces";
-
+    fn new(width: u32, height: u32, name: &str) -> Result<Platform> {
         use glutin::{
             config::{ConfigTemplateBuilder, GlConfig},
             context::{ContextApi, ContextAttributesBuilder, NotCurrentGlContext},
@@ -360,7 +355,7 @@ impl Platform {
             winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event().build()?;
 
         let window_builder = winit::window::WindowBuilder::new()
-            .with_title(title)
+            .with_title(name)
             .with_inner_size(winit::dpi::LogicalSize::new(width as f32, height as f32));
         let template = ConfigTemplateBuilder::new();
         let display_builder = DisplayBuilder::new().with_window_builder(Some(window_builder));
@@ -463,24 +458,22 @@ struct Platform {
 }
 
 #[cfg(feature = "sdl2")]
+const NAME: &str = "Curved Surfaces";
+
+#[cfg(feature = "sdl2")]
 impl Platform {
-    fn new() -> Result<Platform> {
-        Self::new_inner().map_err(|s| anyhow!("{}", s))
+    fn new(width: u32, height: u32, name: &str) -> Result<Platform> {
+        Self::new_inner(width, height, name).map_err(|s| anyhow!("{}", s))
     }
 
-    fn new_inner() -> std::result::Result<Platform, String> {
-        // TODO: Make parameters?
-        let width = 1024;
-        let height = 768;
-        let title = "Curved Surfaces";
-
+    fn new_inner(width: u32, height: u32, name: &str) -> std::result::Result<Platform, String> {
         let sdl = sdl2::init()?;
         let video = sdl.video()?;
         let gl_attr = video.gl_attr();
         gl_attr.set_context_profile(sdl2::video::GLProfile::Core);
         gl_attr.set_context_version(3, 0);
         let window = video
-            .window(title, width, height)
+            .window(name, width, height)
             .opengl()
             .resizable()
             .build()
@@ -524,6 +517,9 @@ impl Platform {
 // Main code.
 //
 
+const WIDTH: u32 = 1024;
+const HEIGHT: u32 = 768;
+
 fn main() -> Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
     env_logger::init();
@@ -532,7 +528,7 @@ fn main() -> Result<()> {
     #[cfg(target_arch = "wasm32")]
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
-    let mut p = Platform::new()?;
+    let mut p = Platform::new(WIDTH, HEIGHT, NAME)?;
 
     let drawable = Drawable::new(&p.gl, p.shader_version);
 
